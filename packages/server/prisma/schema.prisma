@@ -1,0 +1,344 @@
+// Alta — Phase 1 schema
+// Multi-tenant subscription document execution platform.
+//
+// Tenant isolation strategy: every tenant-owned table carries tenantId as its
+// first non-id column, and every relation to a tenant-owned table is backed
+// by a composite foreign key (tenantId + id) rather than a bare id FK. This
+// makes it structurally impossible to attach, say, an Investor from Tenant A
+// to a Subscription in Tenant B — the FK itself would fail. Query-layer
+// enforcement (Prisma Client Extension, see src/db/scopedClient.ts) is the
+// other half: every query goes through a per-request client bound to the
+// caller's tenantId, which injects a `where: { tenantId }` on every read
+// and refuses writes without it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant & auth
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  advisorReps AdvisorRep[]
+  investors   Investor[]
+  funds       Fund[]
+  subscriptions Subscription[]
+  auditEvents AuditEvent[]
+
+  @@map("tenants")
+}
+
+enum AdvisorRole {
+  advisor_rep
+  advisor_admin
+}
+
+model AdvisorRep {
+  id           String      @id @default(uuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id])
+  email        String      @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         AdvisorRole @default(advisor_rep)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  sessions            Session[]
+  investorsCreated    Investor[]     @relation("InvestorCreatedBy")
+  subscriptionsCreated Subscription[] @relation("SubscriptionCreatedBy")
+  evidenceUploaded    AccreditationEvidence[]
+
+  @@index([tenantId])
+  @@map("advisor_reps")
+}
+
+model Session {
+  id           String     @id @default(uuid())
+  tenantId     String
+  advisorRepId String
+  advisorRep   AdvisorRep @relation(fields: [advisorRepId], references: [id], onDelete: Cascade)
+  tokenHash    String     @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+
+  @@index([tenantId])
+  @@index([advisorRepId])
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Investor
+// ---------------------------------------------------------------------------
+
+enum InvestorType {
+  individual
+  joint
+  entity
+  trust
+}
+
+// Reg D 501(a) accreditation bases. Individual/joint bases and entity/trust
+// bases are mixed in one enum deliberately — the wizard filters the options
+// shown based on InvestorType, but keeping one enum avoids a duplicated
+// "kind of accreditation" concept and keeps AuditEvent/reporting queries
+// simple (one column to group by regardless of investor type).
+enum AccreditationBasis {
+  individual_income                  // >$200k individual / >$300k joint income, 2 yrs + current-year expectation
+  individual_net_worth                // >$1M net worth excluding primary residence
+  joint_net_worth_spousal_equivalent
+  professional_certification          // Series 7 / 65 / 82 license holder
+  knowledgeable_employee              // of the issuing fund
+  entity_owners_all_accredited        // every equity owner is independently accredited
+  entity_assets_over_5m               // entity/trust not formed for the purpose of investing, >$5M assets
+  entity_investment_advisor
+  entity_broker_dealer
+  entity_bank_or_savings_institution
+  entity_insurance_company
+  entity_registered_investment_company
+  entity_business_development_company
+  entity_small_business_investment_company
+  entity_erisa_plan                   // ERISA plan, investment decisions by bank/insurer/RIA, or assets > $5M
+  entity_government_plan              // state/federal employee benefit plan, assets > $5M
+  entity_family_office                // 2020 addition
+  entity_family_client                // 2020 addition
+  entity_rural_business_investment_company
+}
+
+model Investor {
+  id       String       @id @default(uuid())
+  tenantId String
+  tenant   Tenant       @relation(fields: [tenantId], references: [id])
+  type     InvestorType
+
+  // --- Individual / joint fields (nullable; required by type, enforced in app layer) ---
+  firstName    String?
+  lastName     String?
+  dateOfBirth  DateTime?
+  ssnLast4     String?   // last 4 only in the core record; full TIN lives on the tax profile
+
+  // --- Entity / trust fields ---
+  entityName          String?
+  entitySubtype        String?   // e.g. "LLC", "Limited Partnership", "Revocable Trust" — free text for now
+  formationJurisdiction String?
+
+  // --- Shared contact/address ---
+  email        String?
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String?
+
+  // --- Accreditation ---
+  accreditationBasis      AccreditationBasis?
+  accreditationDetails    Json?      // self-attested supporting figures; shape varies by basis
+  accreditationAttestedAt DateTime?
+
+  createdByRepId String
+  createdByRep   AdvisorRep @relation("InvestorCreatedBy", fields: [createdByRepId], references: [id])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  principals  InvestorPrincipal[]
+  taxProfile  InvestorTaxProfile?
+  evidence    AccreditationEvidence[]
+  subscriptions Subscription[]
+
+  @@index([tenantId])
+  @@map("investors")
+}
+
+// A natural person tied to an Investor: the individual themselves, a joint
+// co-owner, a trustee, or an authorized signer on an entity account. Modeled
+// as its own table from Phase 1 (rather than flat columns on Investor)
+// because document execution — the whole point of this platform — routes
+// signatures to individually identified signers, and that structure is not
+// something to retrofit later.
+enum PrincipalRole {
+  primary
+  joint_owner
+  trustee
+  authorized_signer
+  entity_signer
+}
+
+model InvestorPrincipal {
+  id               String        @id @default(uuid())
+  tenantId         String
+  investorId       String
+  investor         Investor      @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  role             PrincipalRole
+  firstName        String
+  lastName         String
+  email            String?
+  title            String?       // e.g. "Trustee", "Managing Member" — relevant for trust/entity signers
+  isPrimaryContact Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([investorId])
+  @@map("investor_principals")
+}
+
+enum TaxFormType {
+  w9
+  w8ben
+}
+
+// 1:1 with Investor. Split out from the core record because tax data (TIN,
+// foreign status certifications) is more sensitive than profile data and
+// this gives us a single place to apply stricter access/encryption controls
+// later without touching the Investor table.
+model InvestorTaxProfile {
+  id         String      @id @default(uuid())
+  tenantId   String
+  investorId String      @unique
+  investor   Investor    @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  formType   TaxFormType
+
+  // --- W-9 branch (US person) ---
+  w9TaxpayerIdType   String?  // "ssn" | "ein"
+  w9TaxpayerId       String?  // full TIN — encrypt at rest in a later phase
+  w9ExemptPayeeCode  String?
+  w9BackupWithholding Boolean?
+
+  // --- W-8BEN branch (foreign person) ---
+  w8CountryOfCitizenship   String?
+  w8ForeignTaxId           String?
+  w8TreatyCountry          String?
+  w8PermanentResidenceAddr String?
+
+  certifiedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("investor_tax_profiles")
+}
+
+// File-upload stub: saves to local disk in Phase 1, no virus scan / OCR /
+// KYC vendor integration. storagePath is a relative path under the server's
+// configured upload root, never a public URL.
+model AccreditationEvidence {
+  id             String     @id @default(uuid())
+  tenantId       String
+  investorId     String
+  investor       Investor   @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  fileName       String
+  storagePath    String
+  mimeType       String
+  sizeBytes      Int
+  uploadedByRepId String
+  uploadedByRep  AdvisorRep @relation(fields: [uploadedByRepId], references: [id])
+  createdAt      DateTime   @default(now())
+
+  @@index([tenantId])
+  @@index([investorId])
+  @@map("accreditation_evidence")
+}
+
+// ---------------------------------------------------------------------------
+// Fund (stub) & Subscription
+// ---------------------------------------------------------------------------
+
+// Tenant-scoped for now per Phase 1's isolation requirement. In reality a
+// fund is GP-owned and offered across many advisor tenants — that will need
+// a FundOffering/allocation join table once GP roles exist (later phase).
+// Flagging this as a call I made, not a settled decision: happy to model it
+// as a global (non-tenant) table now if you'd rather not carry the migration
+// later.
+model Fund {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  legalName String?
+  minimumInvestment Decimal? @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([tenantId])
+  @@map("funds")
+}
+
+enum SubscriptionStatus {
+  draft
+  pending_investor_data
+  pending_signatures
+  pending_gp_countersign
+  pending_fund_admin_review
+  accepted
+  rejected
+  funded
+}
+
+model Subscription {
+  id         String             @id @default(uuid())
+  tenantId   String
+  tenant     Tenant             @relation(fields: [tenantId], references: [id])
+  investorId String
+  investor   Investor           @relation(fields: [investorId], references: [id])
+  fundId     String
+  fund       Fund               @relation(fields: [fundId], references: [id])
+  status     SubscriptionStatus @default(draft)
+  amount     Decimal?           @db.Decimal(18, 2)
+
+  createdByRepId String
+  createdByRep   AdvisorRep @relation("SubscriptionCreatedBy", fields: [createdByRepId], references: [id])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([investorId])
+  @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+enum AuditActorType {
+  advisor_rep
+  system
+}
+
+// Append-only by convention: no update/delete routes will ever target this
+// table. Every write elsewhere in the app goes through the audit() helper,
+// which is the only code path permitted to insert here.
+model AuditEvent {
+  id         String         @id @default(uuid())
+  tenantId   String
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  actorType  AuditActorType
+  actorId    String?        // AdvisorRep.id when actorType = advisor_rep; null for system
+  action     String         // e.g. "investor.created", "subscription.status_changed"
+  entityType String         // e.g. "Investor", "Subscription"
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+  @@map("audit_events")
+}

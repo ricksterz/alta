@@ -38,7 +38,7 @@ export function InvestorDetailPage() {
 
   return (
     <div>
-      <Link to="/" className="mb-4 inline-block text-sm text-slate-500 hover:underline">
+      <Link to="/investors" className="mb-4 inline-block text-sm text-slate-500 hover:underline">
         ← Back to investors
       </Link>
 

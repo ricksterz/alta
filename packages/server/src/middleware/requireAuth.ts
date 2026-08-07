@@ -18,7 +18,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const tokenHash = hashSessionToken(token);
   const session = await prisma.session.findUnique({
     where: { tokenHash },
-    include: { advisorRep: true },
+    include: { advisorRep: { include: { tenant: true } } },
   });
 
   if (!session || session.expiresAt < new Date() || !session.advisorRep.isActive) {
@@ -27,10 +27,29 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   req.ctx = {
     tenantId: session.tenantId,
+    tenantType: session.advisorRep.tenant.type,
     advisorRepId: session.advisorRepId,
     role: session.advisorRep.role,
     db: scopedClient(session.tenantId),
   };
 
+  next();
+}
+
+// Phase 2 route guards. Role (gp_ops vs advisor_rep/admin) and tenant type
+// (sponsor_firm vs advisor_firm) are meant to move together — gp_ops only
+// exists on sponsor tenants — so these check tenantType, the coarser and
+// more load-bearing of the two, rather than role.
+export function requireSponsorTenant(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "sponsor_firm") {
+    return res.status(403).json({ error: "Sponsor tenant required" });
+  }
+  next();
+}
+
+export function requireAdvisorTenant(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "advisor_firm") {
+    return res.status(403).json({ error: "Advisor tenant required" });
+  }
   next();
 }

@@ -36,6 +36,12 @@ export const ACCREDITATION_BASES: BasisMeta[] = [
     appliesTo: NATURAL_PERSON,
   },
   {
+    value: "director_officer_or_gp_of_issuer",
+    label: "Director, officer, or GP of the issuer",
+    helpText: "A director, executive officer, or general partner of the fund issuing these securities.",
+    appliesTo: NATURAL_PERSON,
+  },
+  {
     value: "knowledgeable_employee",
     label: "Knowledgeable employee",
     helpText: "Knowledgeable employee of the fund issuing the securities.",

@@ -5,6 +5,7 @@ export type AccreditationBasis =
   | "individual_net_worth"
   | "joint_net_worth_spousal_equivalent"
   | "professional_certification"
+  | "director_officer_or_gp_of_issuer"
   | "knowledgeable_employee"
   | "entity_owners_all_accredited"
   | "entity_assets_over_5m"
@@ -40,13 +41,100 @@ export type SubscriptionStatus =
   | "rejected"
   | "funded";
 
+export type TenantType = "advisor_firm" | "sponsor_firm";
+
 export interface AdvisorRepSummary {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: "advisor_rep" | "advisor_admin";
+  role: "advisor_rep" | "advisor_admin" | "gp_ops";
   tenantId: string;
+  tenantType: TenantType;
+}
+
+// --- Phase 2: GP/sponsor fund & document-template management ---
+
+export type FundVehicleType = "lp" | "llc_feeder" | "interval_fund" | "non_traded_bdc" | "evergreen";
+export type FundStructure = "drawdown" | "continuous";
+export type FundStatus = "draft" | "active" | "closed";
+export type EntitlementStatus = "active" | "revoked";
+export type DocumentTemplateStatus = "processing" | "ready" | "archived";
+export type FieldMappingType = "canonical" | "static_value" | "unmapped";
+
+export interface FundListItem {
+  id: string;
+  name: string;
+  vehicleType: FundVehicleType;
+  structure: FundStructure;
+  status: FundStatus;
+  minInvestment: string | null;
+  closeDate: string | null;
+  createdAt: string;
+  activeEntitlementCount: number;
+  totalEntitlementCount: number;
+}
+
+export interface FundAdvisorEntitlement {
+  id: string;
+  status: EntitlementStatus;
+  createdAt: string;
+  advisorTenant: { id: string; name: string };
+}
+
+export interface DocumentTemplateListItem {
+  id: string;
+  originalFilename: string;
+  status: DocumentTemplateStatus;
+  uploadedAt: string;
+  totalFieldCount: number;
+  unmappedFieldCount: number;
+}
+
+export interface FundDetail {
+  id: string;
+  name: string;
+  legalName: string | null;
+  vehicleType: FundVehicleType;
+  structure: FundStructure;
+  minInvestment: string | null;
+  closeDate: string | null;
+  status: FundStatus;
+  gpSignatoryName: string | null;
+  createdAt: string;
+  documentTemplates: DocumentTemplateListItem[];
+  advisorEntitlements: FundAdvisorEntitlement[];
+}
+
+export interface FieldMapping {
+  id: string;
+  anvilFieldKey: string;
+  anvilFieldLabel: string | null;
+  mappingType: FieldMappingType;
+  canonicalField: string | null;
+  staticValue: string | null;
+}
+
+export interface DocumentTemplateDetail {
+  id: string;
+  fundId: string;
+  originalFilename: string;
+  status: DocumentTemplateStatus;
+  uploadedAt: string;
+  fieldMappings: FieldMapping[];
+}
+
+export interface CanonicalField {
+  key: string;
+  label: string;
+  sourceModel: string;
+  sourceField?: string;
+}
+
+export interface AdvisorTenantSummary {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 export interface InvestorListItem {

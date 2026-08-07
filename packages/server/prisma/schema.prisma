@@ -1,15 +1,29 @@
-// Alta — Phase 1 schema
+// Alta schema — Phase 1 (advisor/investor onboarding) + Phase 2 (GP/sponsor
+// fund & document-template management).
 // Multi-tenant subscription document execution platform.
 //
-// Tenant isolation strategy: every tenant-owned table carries tenantId as its
-// first non-id column, and every relation to a tenant-owned table is backed
-// by a composite foreign key (tenantId + id) rather than a bare id FK. This
-// makes it structurally impossible to attach, say, an Investor from Tenant A
-// to a Subscription in Tenant B — the FK itself would fail. Query-layer
-// enforcement (Prisma Client Extension, see src/db/scopedClient.ts) is the
-// other half: every query goes through a per-request client bound to the
-// caller's tenantId, which injects a `where: { tenantId }` on every read
-// and refuses writes without it.
+// Tenant isolation strategy: every tenant-owned table carries a tenant-owning
+// column (tenantId for advisor-side tables, sponsorTenantId for sponsor-side
+// tables — deliberately different names so code can't silently apply the
+// wrong tenant's filter) as its first non-id column. Enforcement is at the
+// query layer: every route request goes through a per-request Prisma Client
+// Extension (src/db/scopedClient.ts) bound to the caller's tenantId, which
+// injects a `where: { <tenantColumn> }` on every read/bulk-write and stamps
+// it onto every create, with unsafe single-record operations (findUnique,
+// update, delete, upsert) disabled outright.
+//
+// This is NOT backed by composite foreign keys — every relation below is a
+// plain single-column FK on `id`, not `(tenantId, id)`. The database itself
+// does not prevent, say, a Subscription in Tenant A from pointing investorId
+// at an Investor in Tenant B; that's prevented entirely by application code
+// only ever sourcing related IDs from an already tenant-scoped lookup. As of
+// Phase 2 this is intentional in one specific place — Subscription.fundId
+// legitimately points at a Fund owned by a different (sponsor) tenant — so
+// the DB-level guarantee was never going to be "no cross-tenant FK ever",
+// only "no cross-tenant FK by accident." Worth revisiting with real
+// composite FKs (@@unique([tenantId, id]) + composite relations) if this
+// starts handling data where that distinction needs to be airtight rather
+// than code-reviewed.
 
 generator client {
   provider = "prisma-client-js"
@@ -24,25 +38,41 @@ datasource db {
 // Tenant & auth
 // ---------------------------------------------------------------------------
 
-model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum TenantType {
+  advisor_firm
+  sponsor_firm
+}
 
-  advisorReps AdvisorRep[]
-  investors   Investor[]
-  funds       Fund[]
+model Tenant {
+  id        String     @id @default(uuid())
+  type      TenantType @default(advisor_firm)
+  name      String
+  slug      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  advisorReps   AdvisorRep[]
+  investors     Investor[]
   subscriptions Subscription[]
-  auditEvents AuditEvent[]
+  auditEvents   AuditEvent[]
+
+  // Phase 2 — sponsor_firm side
+  sponsoredFunds         Fund[]                   @relation("FundSponsor")
+  advisorEntitlements    FundAdvisorEntitlement[] @relation("EntitlementAdvisor")
+  sponsoredEntitlements  FundAdvisorEntitlement[] @relation("EntitlementSponsor")
+  sponsoredTemplates     DocumentTemplate[]
+  sponsoredFieldMappings FieldMapping[]
 
   @@map("tenants")
 }
 
+// gp_ops is a sponsor_firm-tenant-only role, enforced at the app layer
+// (requireSponsorTenant middleware) rather than a DB cross-table constraint —
+// same tradeoff as the tenantId/sponsorTenantId split above.
 enum AdvisorRole {
   advisor_rep
   advisor_admin
+  gp_ops
 }
 
 model AdvisorRep {
@@ -58,10 +88,14 @@ model AdvisorRep {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  sessions            Session[]
-  investorsCreated    Investor[]     @relation("InvestorCreatedBy")
-  subscriptionsCreated Subscription[] @relation("SubscriptionCreatedBy")
-  evidenceUploaded    AccreditationEvidence[]
+  sessions             Session[]
+  investorsCreated     Investor[]              @relation("InvestorCreatedBy")
+  subscriptionsCreated Subscription[]          @relation("SubscriptionCreatedBy")
+  evidenceUploaded     AccreditationEvidence[]
+
+  // Phase 2 — gp_ops side
+  entitlementsGranted FundAdvisorEntitlement[]
+  templatesUploaded   DocumentTemplate[]
 
   @@index([tenantId])
   @@map("advisor_reps")
@@ -100,13 +134,14 @@ enum InvestorType {
 // "kind of accreditation" concept and keeps AuditEvent/reporting queries
 // simple (one column to group by regardless of investor type).
 enum AccreditationBasis {
-  individual_income                  // >$200k individual / >$300k joint income, 2 yrs + current-year expectation
-  individual_net_worth                // >$1M net worth excluding primary residence
+  individual_income // >$200k individual / >$300k joint income, 2 yrs + current-year expectation
+  individual_net_worth // >$1M net worth excluding primary residence
   joint_net_worth_spousal_equivalent
-  professional_certification          // Series 7 / 65 / 82 license holder
-  knowledgeable_employee              // of the issuing fund
-  entity_owners_all_accredited        // every equity owner is independently accredited
-  entity_assets_over_5m               // entity/trust not formed for the purpose of investing, >$5M assets
+  professional_certification // Series 7 / 65 / 82 license holder
+  director_officer_or_gp_of_issuer // 501(a)(4) — affiliated with the fund's GP, regardless of income/net worth
+  knowledgeable_employee // of the issuing fund
+  entity_owners_all_accredited // every equity owner is independently accredited
+  entity_assets_over_5m // entity/trust not formed for the purpose of investing, >$5M assets
   entity_investment_advisor
   entity_broker_dealer
   entity_bank_or_savings_institution
@@ -114,10 +149,10 @@ enum AccreditationBasis {
   entity_registered_investment_company
   entity_business_development_company
   entity_small_business_investment_company
-  entity_erisa_plan                   // ERISA plan, investment decisions by bank/insurer/RIA, or assets > $5M
-  entity_government_plan              // state/federal employee benefit plan, assets > $5M
-  entity_family_office                // 2020 addition
-  entity_family_client                // 2020 addition
+  entity_erisa_plan // ERISA plan, investment decisions by bank/insurer/RIA, or assets > $5M
+  entity_government_plan // state/federal employee benefit plan, assets > $5M
+  entity_family_office // 2020 addition
+  entity_family_client // 2020 addition
   entity_rural_business_investment_company
 }
 
@@ -128,14 +163,14 @@ model Investor {
   type     InvestorType
 
   // --- Individual / joint fields (nullable; required by type, enforced in app layer) ---
-  firstName    String?
-  lastName     String?
-  dateOfBirth  DateTime?
-  ssnLast4     String?   // last 4 only in the core record; full TIN lives on the tax profile
+  firstName   String?
+  lastName    String?
+  dateOfBirth DateTime?
+  ssnLast4    String? // last 4 only in the core record; full TIN lives on the tax profile
 
   // --- Entity / trust fields ---
-  entityName          String?
-  entitySubtype        String?   // e.g. "LLC", "Limited Partnership", "Revocable Trust" — free text for now
+  entityName            String?
+  entitySubtype         String? // e.g. "LLC", "Limited Partnership", "Revocable Trust" — free text for now
   formationJurisdiction String?
 
   // --- Shared contact/address ---
@@ -150,7 +185,7 @@ model Investor {
 
   // --- Accreditation ---
   accreditationBasis      AccreditationBasis?
-  accreditationDetails    Json?      // self-attested supporting figures; shape varies by basis
+  accreditationDetails    Json? // self-attested supporting figures; shape varies by basis
   accreditationAttestedAt DateTime?
 
   createdByRepId String
@@ -158,9 +193,9 @@ model Investor {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  principals  InvestorPrincipal[]
-  taxProfile  InvestorTaxProfile?
-  evidence    AccreditationEvidence[]
+  principals    InvestorPrincipal[]
+  taxProfile    InvestorTaxProfile?
+  evidence      AccreditationEvidence[]
   subscriptions Subscription[]
 
   @@index([tenantId])
@@ -190,7 +225,7 @@ model InvestorPrincipal {
   firstName        String
   lastName         String
   email            String?
-  title            String?       // e.g. "Trustee", "Managing Member" — relevant for trust/entity signers
+  title            String? // e.g. "Trustee", "Managing Member" — relevant for trust/entity signers
   isPrimaryContact Boolean       @default(false)
   createdAt        DateTime      @default(now())
 
@@ -216,9 +251,9 @@ model InvestorTaxProfile {
   formType   TaxFormType
 
   // --- W-9 branch (US person) ---
-  w9TaxpayerIdType   String?  // "ssn" | "ein"
-  w9TaxpayerId       String?  // full TIN — encrypt at rest in a later phase
-  w9ExemptPayeeCode  String?
+  w9TaxpayerIdType    String? // "ssn" | "ein"
+  w9TaxpayerId        String? // full TIN — encrypt at rest in a later phase
+  w9ExemptPayeeCode   String?
   w9BackupWithholding Boolean?
 
   // --- W-8BEN branch (foreign person) ---
@@ -239,17 +274,17 @@ model InvestorTaxProfile {
 // KYC vendor integration. storagePath is a relative path under the server's
 // configured upload root, never a public URL.
 model AccreditationEvidence {
-  id             String     @id @default(uuid())
-  tenantId       String
-  investorId     String
-  investor       Investor   @relation(fields: [investorId], references: [id], onDelete: Cascade)
-  fileName       String
-  storagePath    String
-  mimeType       String
-  sizeBytes      Int
+  id              String     @id @default(uuid())
+  tenantId        String
+  investorId      String
+  investor        Investor   @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  fileName        String
+  storagePath     String
+  mimeType        String
+  sizeBytes       Int
   uploadedByRepId String
-  uploadedByRep  AdvisorRep @relation(fields: [uploadedByRepId], references: [id])
-  createdAt      DateTime   @default(now())
+  uploadedByRep   AdvisorRep @relation(fields: [uploadedByRepId], references: [id])
+  createdAt       DateTime   @default(now())
 
   @@index([tenantId])
   @@index([investorId])
@@ -257,30 +292,134 @@ model AccreditationEvidence {
 }
 
 // ---------------------------------------------------------------------------
-// Fund (stub) & Subscription
+// Fund, entitlements & document templates (Phase 2 — sponsor/GP side)
 // ---------------------------------------------------------------------------
 
-// Tenant-scoped for now per Phase 1's isolation requirement. In reality a
-// fund is GP-owned and offered across many advisor tenants — that will need
-// a FundOffering/allocation join table once GP roles exist (later phase).
-// Flagging this as a call I made, not a settled decision: happy to model it
-// as a global (non-tenant) table now if you'd rather not carry the migration
-// later.
+enum FundVehicleType {
+  lp
+  llc_feeder
+  interval_fund
+  non_traded_bdc
+  evergreen
+}
+
+enum FundStructure {
+  drawdown
+  continuous
+}
+
+enum FundStatus {
+  draft
+  active
+  closed
+}
+
 model Fund {
-  id        String   @id @default(uuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  name      String
-  legalName String?
-  minimumInvestment Decimal? @db.Decimal(18, 2)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String          @id @default(uuid())
+  sponsorTenantId String
+  sponsorTenant   Tenant          @relation("FundSponsor", fields: [sponsorTenantId], references: [id])
+  name            String
+  legalName       String?
+  vehicleType     FundVehicleType
+  structure       FundStructure
+  minInvestment   Decimal?        @db.Decimal(18, 2)
+  closeDate       DateTime? // nullable; only meaningful when structure = drawdown (app-layer enforced)
+  status          FundStatus      @default(draft)
+  gpSignatoryName String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  subscriptions Subscription[]
+  advisorEntitlements FundAdvisorEntitlement[]
+  documentTemplates   DocumentTemplate[]
+  subscriptions       Subscription[]
 
-  @@index([tenantId])
+  @@index([sponsorTenantId])
   @@map("funds")
 }
+
+enum EntitlementStatus {
+  active
+  revoked
+}
+
+// Controls which advisor tenants can offer which funds. No advisor-side
+// "browse funds" UI yet (Phase 2 scope) — this is grant/revoke by the
+// sponsor only, data model ahead of the UI that will read it.
+model FundAdvisorEntitlement {
+  id              String            @id @default(uuid())
+  fundId          String
+  fund            Fund              @relation(fields: [fundId], references: [id])
+  advisorTenantId String
+  advisorTenant   Tenant            @relation("EntitlementAdvisor", fields: [advisorTenantId], references: [id])
+  sponsorTenantId String // denormalized from fund.sponsorTenantId — direct query-layer scoping, no join needed
+  sponsorTenant   Tenant            @relation("EntitlementSponsor", fields: [sponsorTenantId], references: [id])
+  status          EntitlementStatus @default(active)
+  grantedByRepId  String
+  grantedByRep    AdvisorRep        @relation(fields: [grantedByRepId], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([fundId, advisorTenantId])
+  @@index([sponsorTenantId])
+  @@index([advisorTenantId])
+  @@map("fund_advisor_entitlements")
+}
+
+enum DocumentTemplateStatus {
+  processing
+  ready
+  archived
+}
+
+model DocumentTemplate {
+  id                String                 @id @default(uuid())
+  sponsorTenantId   String // denormalized from fund.sponsorTenantId
+  sponsorTenant     Tenant                 @relation(fields: [sponsorTenantId], references: [id])
+  fundId            String
+  fund              Fund                   @relation(fields: [fundId], references: [id])
+  anvilTemplateId   String // Anvil Cast eid
+  originalFilename  String
+  status            DocumentTemplateStatus @default(processing)
+  detectedFieldsRaw Json // raw Anvil createCast response, verbatim — mapping UI never re-calls Anvil
+  uploadedByRepId   String
+  uploadedByRep     AdvisorRep             @relation(fields: [uploadedByRepId], references: [id])
+  uploadedAt        DateTime               @default(now())
+
+  fieldMappings FieldMapping[]
+
+  @@index([sponsorTenantId])
+  @@index([fundId])
+  @@map("document_templates")
+}
+
+enum FieldMappingType {
+  canonical
+  static_value
+  unmapped
+}
+
+model FieldMapping {
+  id              String           @id @default(uuid())
+  sponsorTenantId String // denormalized from template → fund → sponsorTenantId
+  sponsorTenant   Tenant           @relation(fields: [sponsorTenantId], references: [id])
+  templateId      String
+  template        DocumentTemplate @relation(fields: [templateId], references: [id])
+  anvilFieldKey   String // CastField.id from Anvil's detected fields
+  anvilFieldLabel String? // CastField.name — display only
+  mappingType     FieldMappingType @default(unmapped)
+  canonicalField  String? // key into CANONICAL_FIELDS; required when mappingType = canonical
+  staticValue     String? // required when mappingType = static_value
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([templateId, anvilFieldKey])
+  @@index([sponsorTenantId])
+  @@map("field_mappings")
+}
+
+// ---------------------------------------------------------------------------
+// Subscription
+// ---------------------------------------------------------------------------
 
 enum SubscriptionStatus {
   draft
@@ -331,9 +470,9 @@ model AuditEvent {
   tenantId   String
   tenant     Tenant         @relation(fields: [tenantId], references: [id])
   actorType  AuditActorType
-  actorId    String?        // AdvisorRep.id when actorType = advisor_rep; null for system
-  action     String         // e.g. "investor.created", "subscription.status_changed"
-  entityType String         // e.g. "Investor", "Subscription"
+  actorId    String? // AdvisorRep.id when actorType = advisor_rep; null for system
+  action     String // e.g. "investor.created", "subscription.status_changed"
+  entityType String // e.g. "Investor", "Subscription"
   entityId   String
   metadata   Json?
   createdAt  DateTime       @default(now())

@@ -25,7 +25,10 @@ authRouter.post("/login", async (req, res) => {
 
   // Email is globally unique, so this is the one legitimate unscoped lookup:
   // we don't know the tenant until we know who's logging in.
-  const advisorRep = await prisma.advisorRep.findUnique({ where: { email } });
+  const advisorRep = await prisma.advisorRep.findUnique({
+    where: { email },
+    include: { tenant: { select: { type: true } } },
+  });
   if (!advisorRep || !advisorRep.isActive) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
@@ -76,6 +79,7 @@ authRouter.post("/login", async (req, res) => {
     lastName: advisorRep.lastName,
     role: advisorRep.role,
     tenantId: advisorRep.tenantId,
+    tenantType: advisorRep.tenant.type,
   });
 });
 
@@ -118,5 +122,5 @@ authRouter.get("/me", requireAuth, async (req, res) => {
       tenantId: true,
     },
   });
-  res.json(advisorRep);
+  res.json({ ...advisorRep, tenantType: ctx.tenantType });
 });

@@ -6,12 +6,12 @@ import {
   PrincipalRole,
   TaxFormType,
 } from "@prisma/client";
-import { requireAuth } from "../middleware/requireAuth.js";
+import { requireAdvisorTenant, requireAuth } from "../middleware/requireAuth.js";
 import { audit } from "../audit.js";
 import { upload } from "../upload.js";
 
 export const investorsRouter = Router();
-investorsRouter.use(requireAuth);
+investorsRouter.use(requireAuth, requireAdvisorTenant);
 
 // ---------------------------------------------------------------------------
 // GET /investors — dashboard list with subscription count/status summary

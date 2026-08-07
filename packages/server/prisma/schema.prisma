@@ -62,6 +62,7 @@ model Tenant {
   sponsoredEntitlements  FundAdvisorEntitlement[] @relation("EntitlementSponsor")
   sponsoredTemplates     DocumentTemplate[]
   sponsoredFieldMappings FieldMapping[]
+  sponsoredSubscriptions Subscription[]           @relation("SubscriptionSponsor")
 
   @@map("tenants")
 }
@@ -96,6 +97,9 @@ model AdvisorRep {
   // Phase 2 — gp_ops side
   entitlementsGranted FundAdvisorEntitlement[]
   templatesUploaded   DocumentTemplate[]
+
+  // Phase 3/4 — countersignatures
+  signaturesGiven SignatureRequest[] @relation("SignatureSigner")
 
   @@index([tenantId])
   @@map("advisor_reps")
@@ -228,6 +232,8 @@ model InvestorPrincipal {
   title            String? // e.g. "Trustee", "Managing Member" — relevant for trust/entity signers
   isPrimaryContact Boolean       @default(false)
   createdAt        DateTime      @default(now())
+
+  signatureRequests SignatureRequest[]
 
   @@index([tenantId])
   @@index([investorId])
@@ -385,7 +391,8 @@ model DocumentTemplate {
   uploadedByRep     AdvisorRep             @relation(fields: [uploadedByRepId], references: [id])
   uploadedAt        DateTime               @default(now())
 
-  fieldMappings FieldMapping[]
+  fieldMappings         FieldMapping[]
+  subscriptionDocuments SubscriptionDocument[]
 
   @@index([sponsorTenantId])
   @@index([fundId])
@@ -432,25 +439,140 @@ enum SubscriptionStatus {
   funded
 }
 
+// The one dual-owned model in the system. A subscription is created by an
+// advisor tenant (tenantId) but must also be visible to — and actionable by —
+// the sponsor tenant whose fund it subscribes to (sponsorTenantId, denormalized
+// from fund.sponsorTenantId at creation). scopedClient picks which column to
+// filter on based on the caller's tenant TYPE, so neither side can see the
+// other's unrelated subscriptions while both can see this one. See
+// DUAL_TENANT_MODELS in src/db/scopedClient.ts.
 model Subscription {
-  id         String             @id @default(uuid())
-  tenantId   String
-  tenant     Tenant             @relation(fields: [tenantId], references: [id])
-  investorId String
-  investor   Investor           @relation(fields: [investorId], references: [id])
-  fundId     String
-  fund       Fund               @relation(fields: [fundId], references: [id])
-  status     SubscriptionStatus @default(draft)
-  amount     Decimal?           @db.Decimal(18, 2)
+  id              String             @id @default(uuid())
+  tenantId        String // advisor tenant that owns the investor relationship
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  sponsorTenantId String // sponsor tenant that owns the fund — denormalized from fund
+  sponsorTenant   Tenant             @relation("SubscriptionSponsor", fields: [sponsorTenantId], references: [id])
+  investorId      String
+  investor        Investor           @relation(fields: [investorId], references: [id])
+  fundId          String
+  fund            Fund               @relation(fields: [fundId], references: [id])
+  status          SubscriptionStatus @default(draft)
+  amount          Decimal?           @db.Decimal(18, 2)
+
+  // Lifecycle timestamps — set as the subscription moves through the state
+  // machine (src/workflow/subscriptionStatus.ts). Nullable because a given
+  // subscription may never reach that state.
+  submittedAt     DateTime? // advisor sent it for signature
+  signedAt        DateTime? // investor side fully signed
+  countersignedAt DateTime? // GP countersigned
+  decidedAt       DateTime? // accepted or rejected
+  fundedAt        DateTime?
+  rejectionReason String?
 
   createdByRepId String
   createdByRep   AdvisorRep @relation("SubscriptionCreatedBy", fields: [createdByRepId], references: [id])
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
+  documents  SubscriptionDocument[]
+  signatures SignatureRequest[]
+
   @@index([tenantId])
+  @@index([sponsorTenantId])
   @@index([investorId])
   @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Generated documents & signatures
+// ---------------------------------------------------------------------------
+
+enum DocumentProviderKind {
+  local // pdf-lib, on-disk — dev/demo
+  anvil // Anvil fillPDF + Etch — production
+}
+
+// A generated (filled) subscription document. fieldValues is the resolved
+// snapshot of exactly what was written into the PDF, stored verbatim: for an
+// executed subscription doc, "what did the investor actually sign" is the
+// question an auditor asks, and re-resolving it later from live records would
+// answer a subtly different one.
+model SubscriptionDocument {
+  id               String               @id @default(uuid())
+  tenantId         String
+  sponsorTenantId  String
+  subscriptionId   String
+  subscription     Subscription         @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  templateId       String
+  template         DocumentTemplate     @relation(fields: [templateId], references: [id])
+  provider         DocumentProviderKind
+  storagePath      String // relative to UPLOAD_ROOT; never a public URL
+  fieldValues      Json // { canonicalKey|anvilFieldKey: resolvedValue } as filled
+  unresolvedFields Json // field keys that had no value at generation time
+  generatedAt      DateTime             @default(now())
+
+  signatures SignatureRequest[]
+
+  @@index([tenantId])
+  @@index([sponsorTenantId])
+  @@index([subscriptionId])
+  @@map("subscription_documents")
+}
+
+enum SignerRole {
+  investor_signer
+  gp_countersigner
+}
+
+enum SignatureStatus {
+  pending
+  signed
+  declined
+}
+
+// One requested signature on a generated document. Signer identity is
+// snapshotted (signerName/signerEmail) rather than only referenced, so a later
+// rename or a deactivated rep never rewrites who signed a historical document.
+model SignatureRequest {
+  id              String               @id @default(uuid())
+  tenantId        String
+  sponsorTenantId String
+  subscriptionId  String
+  subscription    Subscription         @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  documentId      String
+  document        SubscriptionDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  role            SignerRole
+  sequence        Int // investor signers sign before the GP countersigns
+
+  // Exactly one of these is set, per role.
+  investorPrincipalId String?
+  investorPrincipal   InvestorPrincipal? @relation(fields: [investorPrincipalId], references: [id])
+  advisorRepId        String?
+  advisorRep          AdvisorRep?        @relation("SignatureSigner", fields: [advisorRepId], references: [id])
+
+  signerName  String
+  signerEmail String?
+
+  status SignatureStatus @default(pending)
+
+  // Ceremony evidence. NOTE: this is the local provider's in-app signature —
+  // signer intent + typed name + timestamp + IP. It is deliberately NOT a
+  // legally compliant ESIGN/UETA e-signature; the Anvil Etch provider is what
+  // production uses. Kept on the same model so the workflow shape doesn't
+  // change when the provider does.
+  signedAt      DateTime?
+  typedName     String?
+  ipAddress     String?
+  userAgent     String?
+  declineReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([sponsorTenantId])
+  @@index([subscriptionId])
+  @@map("signature_requests")
 }
 
 // ---------------------------------------------------------------------------

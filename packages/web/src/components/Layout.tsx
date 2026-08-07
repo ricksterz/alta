@@ -36,6 +36,9 @@ export function Layout() {
                     Investors
                   </Link>
                 )}
+                <Link to="/subscriptions" className="hover:text-slate-900">
+                  Subscriptions
+                </Link>
               </nav>
             )}
           </div>

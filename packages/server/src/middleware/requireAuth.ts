@@ -30,7 +30,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     tenantType: session.advisorRep.tenant.type,
     advisorRepId: session.advisorRepId,
     role: session.advisorRep.role,
-    db: scopedClient(session.tenantId),
+    db: scopedClient(session.tenantId, session.advisorRep.tenant.type),
   };
 
   next();

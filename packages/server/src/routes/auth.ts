@@ -38,7 +38,7 @@ authRouter.post("/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  const db = scopedClient(advisorRep.tenantId);
+  const db = scopedClient(advisorRep.tenantId, advisorRep.tenant.type);
   const { token, tokenHash } = generateSessionToken();
   const expiresAt = new Date(Date.now() + env.SESSION_TTL_HOURS * 60 * 60 * 1000);
 

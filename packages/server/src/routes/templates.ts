@@ -12,6 +12,14 @@ const memoryUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
+// Two routers, because these routes live under two different URL prefixes.
+// Previously this was one router mounted at "/", which meant its router-wide
+// requireSponsorTenant ran on every request path in the app — harmless while
+// every route was sponsor-only, but it silently 403'd the advisor-side
+// subscription routes added later. Mount narrowly instead.
+export const fundTemplatesRouter = Router({ mergeParams: true });
+fundTemplatesRouter.use(requireAuth, requireSponsorTenant);
+
 export const templatesRouter = Router();
 templatesRouter.use(requireAuth, requireSponsorTenant);
 
@@ -38,8 +46,8 @@ function extractDetectedFields(raw: unknown): { key: string; label?: string }[] 
 // ---------------------------------------------------------------------------
 // POST /funds/:fundId/templates — upload PDF, call Anvil, seed unmapped fields
 // ---------------------------------------------------------------------------
-templatesRouter.post(
-  "/funds/:fundId/templates",
+fundTemplatesRouter.post(
+  "/:fundId/templates",
   memoryUpload.single("file"),
   async (req, res) => {
     const ctx = req.ctx!;
@@ -97,7 +105,7 @@ templatesRouter.post(
 // ---------------------------------------------------------------------------
 // GET /funds/:fundId/templates
 // ---------------------------------------------------------------------------
-templatesRouter.get("/funds/:fundId/templates", async (req, res) => {
+fundTemplatesRouter.get("/:fundId/templates", async (req, res) => {
   const db = req.ctx!.db;
   const templates = await db.documentTemplate.findMany({
     where: { fundId: req.params.fundId },
@@ -120,7 +128,7 @@ templatesRouter.get("/funds/:fundId/templates", async (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /templates/:id — detail + field mappings
 // ---------------------------------------------------------------------------
-templatesRouter.get("/templates/:id", async (req, res) => {
+templatesRouter.get("/:id", async (req, res) => {
   const db = req.ctx!.db;
   const template = await db.documentTemplate.findFirst({
     where: { id: req.params.id },
@@ -152,7 +160,7 @@ const updateMappingSchema = z
     }
   });
 
-templatesRouter.patch("/templates/:id/mappings/:mappingId", async (req, res) => {
+templatesRouter.patch("/:id/mappings/:mappingId", async (req, res) => {
   const ctx = req.ctx!;
   const parsed = updateMappingSchema.safeParse(req.body);
   if (!parsed.success) {

@@ -11,6 +11,9 @@ import { FundsDashboardPage } from "./pages/funds/FundsDashboardPage";
 import { FundFormPage } from "./pages/funds/FundFormPage";
 import { FundDetailPage } from "./pages/funds/FundDetailPage";
 import { TemplateMappingPage } from "./pages/funds/TemplateMappingPage";
+import { NewSubscriptionPage } from "./pages/subscriptions/NewSubscriptionPage";
+import { SubscriptionDetailPage } from "./pages/subscriptions/SubscriptionDetailPage";
+import { SubscriptionsQueuePage } from "./pages/subscriptions/SubscriptionsQueuePage";
 
 export function App() {
   return (
@@ -29,6 +32,10 @@ export function App() {
             <Route path="/funds/new" element={<FundFormPage />} />
             <Route path="/funds/:id" element={<FundDetailPage />} />
             <Route path="/templates/:id" element={<TemplateMappingPage />} />
+
+            <Route path="/subscriptions" element={<SubscriptionsQueuePage />} />
+            <Route path="/subscriptions/new" element={<NewSubscriptionPage />} />
+            <Route path="/subscriptions/:id" element={<SubscriptionDetailPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

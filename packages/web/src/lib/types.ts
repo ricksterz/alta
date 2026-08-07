@@ -209,3 +209,65 @@ export interface InvestorDetail {
   evidence: AccreditationEvidence[];
   subscriptions: Subscription[];
 }
+
+// --- Phase 3/4: subscription document workflow ---
+
+export type SignerRole = "investor_signer" | "gp_countersigner";
+export type SignatureStatus = "pending" | "signed" | "declined";
+
+export interface AvailableFund {
+  id: string;
+  name: string;
+  legalName: string | null;
+  vehicleType: FundVehicleType;
+  structure: FundStructure;
+  minInvestment: string | null;
+  closeDate: string | null;
+  hasTemplate: boolean;
+  templateUnmappedFieldCount: number;
+}
+
+export interface SubscriptionListItem {
+  id: string;
+  status: SubscriptionStatus;
+  amount: string | null;
+  createdAt: string;
+  investor: { id: string; displayName: string };
+  fund: { id: string; name: string };
+  advisorFirm: string;
+  allowedNext: SubscriptionStatus[];
+}
+
+export interface SignatureRequestItem {
+  id: string;
+  role: SignerRole;
+  sequence: number;
+  signerName: string;
+  signerEmail: string | null;
+  status: SignatureStatus;
+  signedAt: string | null;
+  typedName: string | null;
+}
+
+export interface SubscriptionDocumentItem {
+  id: string;
+  provider: "local" | "anvil";
+  generatedAt: string;
+  fieldValues: Record<string, string>;
+  unresolvedFields: { anvilFieldKey: string; canonicalField: string; reason: string }[];
+}
+
+export interface SubscriptionDetail {
+  id: string;
+  status: SubscriptionStatus;
+  amount: string | null;
+  createdAt: string;
+  rejectionReason: string | null;
+  investorDisplayName: string;
+  advisorFirm: string;
+  investor: { id: string };
+  fund: { id: string; name: string; legalName: string | null };
+  documents: SubscriptionDocumentItem[];
+  signatures: SignatureRequestItem[];
+  allowedNext: SubscriptionStatus[];
+}

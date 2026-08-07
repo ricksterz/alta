@@ -1,3 +1,4 @@
+import type { TenantType } from "@prisma/client";
 import { prisma } from "./client.js";
 
 // Tenant-isolation enforcement lives here, in one place, rather than in
@@ -17,26 +18,49 @@ import { prisma } from "./client.js";
 //  - Tenant itself is exempt (it has no tenant-owning column — it IS the
 //    tenant).
 //
-// One caller-supplied id, two possible meanings: most models are owned by
-// an advisor tenant via `tenantId`. Fund/DocumentTemplate/FieldMapping/
-// FundAdvisorEntitlement (Phase 2) are owned by a sponsor tenant instead —
-// deliberately via a differently-named column, `sponsorTenantId`, so code
-// can't accidentally apply an advisor tenant's filter to sponsor-owned data
-// or vice versa. scopedClient(id) doesn't need to know which kind of tenant
-// `id` is — a session only ever holds one, and the column-override map below
-// routes each model to the right one.
+// Three ownership shapes, resolved per model by tenantColumnFor():
+//
+//  1. Advisor-owned (the default): scoped by `tenantId`. Investor, Session,
+//     AuditEvent, etc.
+//  2. Sponsor-owned: scoped by `sponsorTenantId`. Fund, DocumentTemplate,
+//     FieldMapping, FundAdvisorEntitlement. A deliberately different column
+//     name so code can't accidentally apply an advisor tenant's filter to
+//     sponsor-owned data or vice versa.
+//  3. Dual-owned: carries BOTH columns, and which one applies depends on who
+//     is asking. A Subscription belongs to the advisor tenant that created it
+//     AND to the sponsor tenant whose fund it subscribes to — both must see
+//     it, neither may see the other's unrelated subscriptions. This is the
+//     only shape that needs the caller's tenant TYPE, not just their id,
+//     which is why scopedClient takes both.
+//
+// The dual case is the one worth being careful about: getting it wrong in the
+// permissive direction leaks one advisor firm's book of business to another,
+// so the mapping below is explicit per model rather than inferred from which
+// columns happen to exist.
 
 const TENANT_EXEMPT_MODELS = new Set(["Tenant"]);
 
-const TENANT_COLUMN_OVERRIDES: Record<string, string> = {
-  Fund: "sponsorTenantId",
-  FundAdvisorEntitlement: "sponsorTenantId",
-  DocumentTemplate: "sponsorTenantId",
-  FieldMapping: "sponsorTenantId",
-};
+const SPONSOR_OWNED_MODELS = new Set([
+  "Fund",
+  "FundAdvisorEntitlement",
+  "DocumentTemplate",
+  "FieldMapping",
+]);
 
-function tenantColumnFor(model: string): string {
-  return TENANT_COLUMN_OVERRIDES[model] ?? "tenantId";
+const DUAL_OWNED_MODELS = new Set([
+  "Subscription",
+  "SubscriptionDocument",
+  "SignatureRequest",
+]);
+
+function tenantColumnFor(model: string, tenantType: TenantType): string {
+  if (DUAL_OWNED_MODELS.has(model)) {
+    return tenantType === "sponsor_firm" ? "sponsorTenantId" : "tenantId";
+  }
+  if (SPONSOR_OWNED_MODELS.has(model)) {
+    return "sponsorTenantId";
+  }
+  return "tenantId";
 }
 
 const BANNED_OPERATIONS = new Set([
@@ -65,7 +89,7 @@ const DATA_SCOPED_CREATE_MANY_OPERATIONS = new Set([
   "createManyAndReturn",
 ]);
 
-export function scopedClient(tenantId: string) {
+export function scopedClient(tenantId: string, tenantType: TenantType) {
   return prisma.$extends({
     name: `tenant-scope`,
     query: {
@@ -74,7 +98,7 @@ export function scopedClient(tenantId: string) {
           if (TENANT_EXEMPT_MODELS.has(model)) {
             return query(args);
           }
-          const column = tenantColumnFor(model);
+          const column = tenantColumnFor(model, tenantType);
 
           if (BANNED_OPERATIONS.has(operation)) {
             throw new Error(

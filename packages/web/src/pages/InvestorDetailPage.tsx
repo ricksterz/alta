@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import type { InvestorDetail } from "../lib/types";
 import { ACCREDITATION_BASES } from "../lib/accreditation";
+import { StatusBadge } from "../components/StatusBadge";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -35,6 +36,9 @@ export function InvestorDetailPage() {
   const displayName = isOrg
     ? investor.entityName ?? "(unnamed)"
     : `${investor.firstName ?? ""} ${investor.lastName ?? ""}`.trim();
+  // Same preconditions the API enforces on POST /subscriptions — mirrored here
+  // so the button is disabled rather than failing after the fact.
+  const readyToSubscribe = Boolean(investor.accreditationBasis && investor.taxProfile);
 
   return (
     <div>
@@ -47,6 +51,21 @@ export function InvestorDetailPage() {
           <h1 className="text-2xl font-semibold text-slate-900">{displayName}</h1>
           <p className="text-sm text-slate-500 capitalize">{investor.type}</p>
         </div>
+        {readyToSubscribe ? (
+          <Link
+            to={`/subscriptions/new?investorId=${investor.id}`}
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Start subscription
+          </Link>
+        ) : (
+          <span
+            className="rounded bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400"
+            title="Complete accreditation and a tax form before subscribing"
+          >
+            Start subscription
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -156,10 +175,27 @@ export function InvestorDetailPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {investor.subscriptions.map((s) => (
-                <tr key={s.id}>
-                  <td className="py-2">{s.fund.name}</td>
-                  <td className="py-2 capitalize">{s.status.replace(/_/g, " ")}</td>
-                  <td className="py-2">{s.amount ?? "—"}</td>
+                <tr key={s.id} className="hover:bg-slate-50">
+                  <td className="py-2">
+                    <Link
+                      to={`/subscriptions/${s.id}`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
+                      {s.fund.name}
+                    </Link>
+                  </td>
+                  <td className="py-2">
+                    <StatusBadge status={s.status} />
+                  </td>
+                  <td className="py-2 tabular-nums">
+                    {s.amount
+                      ? Number(s.amount).toLocaleString("en-US", {
+                          style: "currency",
+                          currency: "USD",
+                          maximumFractionDigits: 0,
+                        })
+                      : "—"}
+                  </td>
                   <td className="py-2">{new Date(s.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}

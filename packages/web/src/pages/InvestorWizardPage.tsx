@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../lib/api";
-import type { InvestorType, PrincipalRole, TaxFormType } from "../lib/types";
+import type { InvestorType, PrincipalRole, QpBasisOption, TaxFormType } from "../lib/types";
 import { basesForInvestorType } from "../lib/accreditation";
 
 const STEPS = ["Profile", "Accreditation", "Tax status", "Review"] as const;
@@ -71,6 +71,23 @@ export function InvestorWizardPage() {
   const [accreditationBasis, setAccreditationBasis] = useState("");
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const availableBases = useMemo(() => basesForInvestorType(profile.type), [profile.type]);
+
+  // Qualified purchaser is captured alongside accreditation because they
+  // answer the same question ("what may this investor buy") at two different
+  // thresholds. Optional: accredited-but-not-QP is a legitimate state.
+  const [qpBasis, setQpBasis] = useState("");
+  const [qpOptions, setQpOptions] = useState<QpBasisOption[]>([]);
+  useEffect(() => {
+    api.get<QpBasisOption[]>("/qp-bases").then(setQpOptions).catch(() => setQpOptions([]));
+  }, []);
+  const availableQpBases = useMemo(
+    () => qpOptions.filter((o) => o.appliesTo.includes(profile.type)),
+    [qpOptions, profile.type]
+  );
+  // Changing investor type can invalidate an already-chosen QP basis.
+  useEffect(() => {
+    if (qpBasis && !availableQpBases.some((o) => o.key === qpBasis)) setQpBasis("");
+  }, [availableQpBases, qpBasis]);
 
   const [taxFormType, setTaxFormType] = useState<TaxFormType>("w9");
   const [w9TaxpayerId, setW9TaxpayerId] = useState("");
@@ -153,6 +170,7 @@ export function InvestorWizardPage() {
     try {
       await api.patch(`/investors/${investorId}/accreditation`, {
         accreditationBasis,
+        qualifiedPurchaserBasis: qpBasis || null,
       });
       if (evidenceFile) {
         const form = new FormData();
@@ -360,6 +378,32 @@ export function InvestorWizardPage() {
                 </p>
               )}
             </div>
+            <div className="rounded border border-slate-200 p-4">
+              <label className={labelClass()}>
+                Qualified purchaser status{" "}
+                <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <select
+                value={qpBasis}
+                onChange={(e) => setQpBasis(e.target.value)}
+                className={inputClass()}
+              >
+                <option value="">Not a qualified purchaser / not established</option>
+                {availableQpBases.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-500">
+                Separate from accreditation and a higher bar (broadly $5M in investments vs
+                $1M net worth). Required to subscribe to a fund relying on the{" "}
+                <abbr title="Investment Company Act Section 3(c)(7)">3(c)(7)</abbr> exclusion —
+                most private funds. Leaving this blank is fine; it only limits which funds this
+                investor can subscribe to.
+              </p>
+            </div>
+
             <div>
               <label className={labelClass()}>Supporting evidence (optional in dev)</label>
               <input
@@ -430,6 +474,12 @@ export function InvestorWizardPage() {
             <p>
               <span className="font-medium">Accreditation basis:</span>{" "}
               {availableBases.find((b) => b.value === accreditationBasis)?.label ?? "—"}
+            </p>
+            <p>
+              <span className="font-medium">Qualified purchaser:</span>{" "}
+              {qpBasis
+                ? (availableQpBases.find((o) => o.key === qpBasis)?.label ?? qpBasis)
+                : "Not established — 3(c)(7) funds will be unavailable"}
             </p>
             <p>
               <span className="font-medium">Tax form:</span> {taxFormType.toUpperCase()}

@@ -1,16 +1,16 @@
-// GENERATED from the Open Disclosure project (~/dev/advisorapp), which
-// builds on SEC Form ADV Schedule D 7.B.(1) private-fund reporting.
-// Real fund names, types, domiciles, and gross asset values.
+// GENERATED from the Open Disclosure project (~/dev/advisorapp), which builds
+// on SEC Form ADV Schedule D 7.B.(1) private-fund reporting.
 //
-// Two fields are NOT from ADV and are synthetic: minInvestment (ADV does
-// not report investment minimums) and closeDate.
+// Real, as-filed: fund name, fund type, domicile, gross asset value, the
+// Investment Company Act exclusion (3(c)(1) vs 3(c)(7)), and master/feeder
+// status.
 //
-// Three real characteristics are DROPPED on import because Alta's Fund
-// model has nowhere to put them — see the note in seed.ts:
-//   - exclusion3c1 / exclusion3c7 (investor eligibility regime)
-//   - domicile (drives W-9 vs W-8BEN applicability)
-//   - isMasterFund / isFeederFund
-// They are retained as comments per fund so the gap stays visible.
+// Synthetic, because ADV reports neither: minInvestment and closeDate.
+//
+// `advFundType` is carried verbatim alongside Alta's `vehicleType` because the
+// two taxonomies do not line up — Alta's enum was invented before this data
+// existed and has no member for hedge, securitized-asset, or liquidity funds.
+// Keeping the real value means the mapping stays auditable instead of lossy.
 
 export interface SeedFund {
   name: string;
@@ -20,12 +20,13 @@ export interface SeedFund {
   minInvestment: number;
   closeDate: string | null;
   gpSignatoryName: string;
-  /** ADV fund_type, verbatim — the real taxonomy Alta's vehicleType approximates. */
+  /** ADV fund_type, verbatim — the real taxonomy vehicleType approximates. */
   advFundType: string;
-  /** ADV domicile. No Fund column for this yet. */
   domicile: string;
-  /** 3(c)(1) = accredited OK; 3(c)(7) = qualified purchaser required. No Fund column yet. */
+  /** 3c1 = accredited investors OK; 3c7 = qualified purchasers only. */
   exclusion: '3c1' | '3c7' | null;
+  isMasterFund: boolean;
+  isFeederFund: boolean;
   grossAssetValueUsd: number;
 }
 
@@ -49,7 +50,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Priya Nair",
         advFundType: "Other Private Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 12799849144,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 12799849144,
       },
       {
         name: "Vintage IX B LP",
@@ -59,7 +62,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Priya Nair",
         advFundType: "Other Private Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 9633319825,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 9633319825,
       },
       {
         name: "West Street Strategic Solutions Offshore Fund I, L.P.",
@@ -69,7 +74,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Priya Nair",
         advFundType: "Private Equity Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 7931788922,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 7931788922,
       },
       {
         name: "Vintage VIII LP",
@@ -79,7 +86,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Priya Nair",
         advFundType: "Private Equity Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 7718077574,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 7718077574,
       },
     ],
   },
@@ -97,7 +106,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Daniel Okafor",
         advFundType: "Hedge Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 23210273397,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 23210273397,
       },
       {
         name: "Ares Senior Direct Lending Master Fund II Designated Activity Company",
@@ -107,7 +118,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Daniel Okafor",
         advFundType: "Hedge Fund",
         domicile: "Ireland",
-        exclusion: '3c7', grossAssetValueUsd: 12916740503,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 12916740503,
       },
       {
         name: "Ares Capital Europe VI (E) II Levered, L.P.",
@@ -117,7 +130,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Daniel Okafor",
         advFundType: "Hedge Fund",
         domicile: "Luxembourg",
-        exclusion: '3c7', grossAssetValueUsd: 9890543882,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 9890543882,
       },
       {
         name: "Ares Capital Europe V (E) Levered",
@@ -127,14 +142,16 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Daniel Okafor",
         advFundType: "Hedge Fund",
         domicile: "Luxembourg",
-        exclusion: '3c7', grossAssetValueUsd: 9801923132,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 9801923132,
       },
     ],
   },
   {
     slug: "two-sigma-investments-lp",
     name: "Two Sigma Investments, LP",
-    gpEmail: "gpops@two.test",
+    gpEmail: "gpops@twosigma.test",
     gpFirstName: "Sofia", gpLastName: "Marchetti",
     funds: [
       {
@@ -145,7 +162,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Sofia Marchetti",
         advFundType: "Hedge Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 38337427187,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 38337427187,
       },
       {
         name: "Two Sigma Spectrum Portfolio, LLC",
@@ -155,7 +174,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Sofia Marchetti",
         advFundType: "Hedge Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 37231961306,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 37231961306,
       },
       {
         name: "Two Sigma Equity Portfolio, LLC",
@@ -165,7 +186,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Sofia Marchetti",
         advFundType: "Hedge Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 21754330720,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 21754330720,
       },
       {
         name: "Two Sigma Futures Portfolio, LLC",
@@ -175,7 +198,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Sofia Marchetti",
         advFundType: "Hedge Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 21599006885,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 21599006885,
       },
     ],
   },
@@ -193,7 +218,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "James Whitlock",
         advFundType: "Other Private Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 16694413528,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 16694413528,
       },
       {
         name: "Apollo Aligned Alternatives (A), L.P.",
@@ -203,7 +230,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "James Whitlock",
         advFundType: "Other Private Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 16690702951,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: true,
+        grossAssetValueUsd: 16690702951,
       },
       {
         name: "A-a Offshore (Aaa), L.P.",
@@ -213,7 +242,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "James Whitlock",
         advFundType: "Other Private Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 13546688327,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: true,
+        grossAssetValueUsd: 13546688327,
       },
       {
         name: "Apollo Investment Fund IX, L.P.",
@@ -223,14 +254,16 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "James Whitlock",
         advFundType: "Private Equity Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 10929220785,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 10929220785,
       },
     ],
   },
   {
     slug: "kohlberg-kravis-roberts-co-l-p",
     name: "Kohlberg Kravis Roberts & Co. L.P.",
-    gpEmail: "gpops@kohlberg.test",
+    gpEmail: "gpops@kkr.test",
     gpFirstName: "Amara", gpLastName: "Osei",
     funds: [
       {
@@ -241,7 +274,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Amara Osei",
         advFundType: "Private Equity Fund",
         domicile: "Luxembourg",
-        exclusion: '3c7', grossAssetValueUsd: 21165504870,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 21165504870,
       },
       {
         name: "KKR Asian Fund IV SCSP",
@@ -251,7 +286,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Amara Osei",
         advFundType: "Private Equity Fund",
         domicile: "Luxembourg",
-        exclusion: '3c7', grossAssetValueUsd: 17135524813,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 17135524813,
       },
       {
         name: "KKR Global Infrastructure Investors IV (Usd) SCSP",
@@ -261,7 +298,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Amara Osei",
         advFundType: "Private Equity Fund",
         domicile: "Luxembourg",
-        exclusion: '3c7', grossAssetValueUsd: 13138805532,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 13138805532,
       },
       {
         name: "KKR Americas Fund XII L.P.",
@@ -271,7 +310,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Amara Osei",
         advFundType: "Private Equity Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 13011814877,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 13011814877,
       },
     ],
   },
@@ -289,7 +330,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Henrik Lindqvist",
         advFundType: "Hedge Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 266320056307,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 266320056307,
       },
       {
         name: "Point72 Capital International, LTD.",
@@ -299,7 +342,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Henrik Lindqvist",
         advFundType: "Hedge Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 32014110351,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 32014110351,
       },
       {
         name: "Point72 Capital, L.P.",
@@ -309,7 +354,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Henrik Lindqvist",
         advFundType: "Hedge Fund",
         domicile: "Delaware",
-        exclusion: '3c7', grossAssetValueUsd: 11324494524,
+        exclusion: '3c7',
+        isMasterFund: false, isFeederFund: false,
+        grossAssetValueUsd: 11324494524,
       },
       {
         name: "Point72 Turion Master, L.P.",
@@ -319,7 +366,9 @@ export const SEED_SPONSORS: SeedSponsor[] = [
         gpSignatoryName: "Henrik Lindqvist",
         advFundType: "Hedge Fund",
         domicile: "Cayman Islands",
-        exclusion: '3c7', grossAssetValueUsd: 4339105745,
+        exclusion: '3c7',
+        isMasterFund: true, isFeederFund: false,
+        grossAssetValueUsd: 4339105745,
       },
     ],
   },

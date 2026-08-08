@@ -203,6 +203,8 @@ export interface InvestorDetail {
   country: string | null;
   accreditationBasis: AccreditationBasis | null;
   accreditationAttestedAt: string | null;
+  qualifiedPurchaserBasis: QualifiedPurchaserBasis | null;
+  qpAttestedAt: string | null;
   createdAt: string;
   principals: InvestorPrincipal[];
   taxProfile: InvestorTaxProfile | null;
@@ -223,6 +225,8 @@ export interface AvailableFund {
   structure: FundStructure;
   minInvestment: string | null;
   closeDate: string | null;
+  exclusion: FundExclusion | null;
+  domicile: string | null;
   hasTemplate: boolean;
   templateUnmappedFieldCount: number;
 }
@@ -270,4 +274,28 @@ export interface SubscriptionDetail {
   documents: SubscriptionDocumentItem[];
   signatures: SignatureRequestItem[];
   allowedNext: SubscriptionStatus[];
+}
+
+// --- Qualified purchaser eligibility (ICA §2(a)(51)) ---
+
+export type FundExclusion = "section_3c1" | "section_3c7";
+
+export type QualifiedPurchaserBasis =
+  | "natural_person_5m"
+  | "family_company_5m"
+  | "trust_qp_settlors"
+  | "institutional_25m"
+  | "qualified_institutional_buyer"
+  | "knowledgeable_employee";
+
+export interface QpBasisOption {
+  key: QualifiedPurchaserBasis;
+  label: string;
+  appliesTo: InvestorType[];
+}
+
+export interface EligibilityResult {
+  eligible: boolean;
+  blockers: { code: string; message: string }[];
+  warnings: { code: string; message: string }[];
 }

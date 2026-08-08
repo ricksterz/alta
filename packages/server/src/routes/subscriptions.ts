@@ -15,6 +15,7 @@ import {
   fundsEntitledToAdvisor,
   readyTemplateForFund,
 } from "../db/crossTenant.js";
+import { checkEligibility } from "../workflow/eligibility.js";
 import { resolveFields } from "../workflow/resolveFields.js";
 import { getDocumentProvider } from "../workflow/documentProvider.js";
 import {
@@ -86,12 +87,47 @@ subscriptionsRouter.get("/available-funds", requireAdvisorTenant, async (req, re
           structure: e.fund.structure,
           minInvestment: e.fund.minInvestment,
           closeDate: e.fund.closeDate,
+          exclusion: e.fund.exclusion,
+          domicile: e.fund.domicile,
           hasTemplate: Boolean(template),
           templateUnmappedFieldCount: template
             ? template.fieldMappings.filter((m) => m.mappingType === "unmapped").length
             : 0,
         };
       })
+  );
+});
+
+// ---------------------------------------------------------------------------
+// GET /subscriptions/eligibility?investorId=&fundId= — pre-submit check
+// ---------------------------------------------------------------------------
+// Same engine the POST uses, exposed so the UI can explain the block before a
+// rep fills in an amount rather than after. Advisory only — the POST re-checks.
+subscriptionsRouter.get("/eligibility", requireAdvisorTenant, async (req, res) => {
+  const ctx = req.ctx!;
+  const investorId = typeof req.query.investorId === "string" ? req.query.investorId : null;
+  const fundId = typeof req.query.fundId === "string" ? req.query.fundId : null;
+  if (!investorId || !fundId) {
+    return res.status(400).json({ error: "investorId and fundId are required" });
+  }
+
+  const investor = await ctx.db.investor.findFirst({ where: { id: investorId } });
+  if (!investor) return res.status(404).json({ error: "Investor not found" });
+
+  const entitlement = await activeEntitlement(ctx.tenantId, fundId);
+  if (!entitlement) {
+    return res.status(403).json({ error: "Your firm is not entitled to offer this fund" });
+  }
+
+  res.json(
+    checkEligibility({
+      investor: {
+        type: investor.type,
+        accreditationBasis: investor.accreditationBasis,
+        qualifiedPurchaserBasis: investor.qualifiedPurchaserBasis,
+      },
+      fund: { exclusion: entitlement.fund.exclusion, name: entitlement.fund.name },
+    })
   );
 });
 
@@ -178,11 +214,6 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
   if (!investor) {
     return res.status(404).json({ error: "Investor not found" });
   }
-  if (!investor.accreditationBasis) {
-    return res
-      .status(400)
-      .json({ error: "Investor must complete accreditation before subscribing" });
-  }
   if (!investor.taxProfile) {
     return res.status(400).json({ error: "Investor must complete a tax form before subscribing" });
   }
@@ -194,6 +225,36 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
     return res.status(403).json({ error: "Your firm is not entitled to offer this fund" });
   }
   const fund = entitlement.fund;
+
+  // Accreditation AND qualified-purchaser eligibility. The UI warns before
+  // submit, but this is the authoritative check — a 3(c)(7) fund must not
+  // accept a merely-accredited investor regardless of what the client sent.
+  const eligibility = checkEligibility({
+    investor: {
+      type: investor.type,
+      accreditationBasis: investor.accreditationBasis,
+      qualifiedPurchaserBasis: investor.qualifiedPurchaserBasis,
+    },
+    fund: { exclusion: fund.exclusion, name: fund.name },
+  });
+  if (!eligibility.eligible) {
+    await audit(ctx.db, ctx.tenantId, {
+      actorType: "advisor_rep",
+      actorId: ctx.advisorRepId,
+      action: "subscription.blocked_ineligible",
+      entityType: "Investor",
+      entityId: investor.id,
+      metadata: {
+        fundId: fund.id,
+        fundExclusion: fund.exclusion,
+        blockers: eligibility.blockers.map((b) => b.code),
+      },
+    });
+    return res.status(403).json({
+      error: eligibility.blockers.map((b) => b.message).join(" "),
+      blockers: eligibility.blockers,
+    });
+  }
 
   if (fund.minInvestment && parsed.data.amount < Number(fund.minInvestment)) {
     return res.status(400).json({

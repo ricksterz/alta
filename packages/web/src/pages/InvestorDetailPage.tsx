@@ -5,6 +5,15 @@ import type { InvestorDetail } from "../lib/types";
 import { ACCREDITATION_BASES } from "../lib/accreditation";
 import { StatusBadge } from "../components/StatusBadge";
 
+const QP_LABELS: Record<string, string> = {
+  natural_person_5m: "Natural person with ≥$5M in investments",
+  family_company_5m: "Family-owned company with ≥$5M in investments",
+  trust_qp_settlors: "Trust whose trustees and settlors are all qualified purchasers",
+  institutional_25m: "Person investing ≥$25M on a discretionary basis",
+  qualified_institutional_buyer: "Qualified institutional buyer (Rule 144A)",
+  knowledgeable_employee: "Knowledgeable employee of the fund (Rule 3c-5)",
+};
+
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
@@ -130,6 +139,27 @@ export function InvestorDetailPage() {
           ) : (
             <p className="mb-4 text-sm text-amber-600">Not yet set</p>
           )}
+
+          <div className="mb-4">
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Qualified purchaser
+            </h3>
+            {investor.qualifiedPurchaserBasis ? (
+              <>
+                <p className="text-sm text-slate-800">
+                  {QP_LABELS[investor.qualifiedPurchaserBasis] ?? investor.qualifiedPurchaserBasis}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Attested{" "}
+                  {investor.qpAttestedAt && new Date(investor.qpAttestedAt).toLocaleDateString()}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Not established — cannot subscribe to 3(c)(7) funds
+              </p>
+            )}
+          </div>
 
           {investor.evidence.length > 0 && (
             <div className="mb-4">

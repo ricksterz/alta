@@ -160,6 +160,21 @@ enum AccreditationBasis {
   entity_rural_business_investment_company
 }
 
+// Qualified purchaser bases under Investment Company Act §2(a)(51), plus the
+// Rule 3c-5 knowledgeable-employee route. Distinct from AccreditationBasis and
+// NOT a superset of it: accreditation (Reg D, ~$1M net worth / $200k income)
+// gates a 3(c)(1) fund; QP status (~$5M in investments) gates a 3(c)(7) fund.
+// An investor can easily be accredited without being a QP, which is exactly
+// the case this enum exists to catch.
+enum QualifiedPurchaserBasis {
+  natural_person_5m // §2(a)(51)(A)(i) — individual/joint, ≥$5M in investments
+  family_company_5m // §2(a)(51)(A)(ii) — family-owned company, ≥$5M in investments
+  trust_qp_settlors // §2(a)(51)(A)(iii) — trust where trustees and settlors are all QPs
+  institutional_25m // §2(a)(51)(A)(iv) — ≥$25M in investments, own or others' accounts
+  qualified_institutional_buyer // Rule 144A QIB treated as QP
+  knowledgeable_employee // Rule 3c-5 — may invest in a 3(c)(7) fund without being a QP
+}
+
 model Investor {
   id       String       @id @default(uuid())
   tenantId String
@@ -187,10 +202,16 @@ model Investor {
   postalCode   String?
   country      String?
 
-  // --- Accreditation ---
+  // --- Accreditation (Reg D 501(a)) — gates 3(c)(1) funds ---
   accreditationBasis      AccreditationBasis?
   accreditationDetails    Json? // self-attested supporting figures; shape varies by basis
   accreditationAttestedAt DateTime?
+
+  // --- Qualified purchaser (ICA §2(a)(51)) — gates 3(c)(7) funds ---
+  // Null means "not established", not "not a QP": absence blocks 3(c)(7)
+  // subscriptions rather than being treated as a negative determination.
+  qualifiedPurchaserBasis QualifiedPurchaserBasis?
+  qpAttestedAt            DateTime?
 
   createdByRepId String
   createdByRep   AdvisorRep @relation("InvestorCreatedBy", fields: [createdByRepId], references: [id])
@@ -320,6 +341,16 @@ enum FundStatus {
   closed
 }
 
+// Investment Company Act exclusion the fund relies on. This determines the
+// INVESTOR ELIGIBILITY BAR, which is why it belongs on Fund rather than being
+// inferred: a 3(c)(1) fund may take accredited investors, a 3(c)(7) fund may
+// only take qualified purchasers (a materially higher standard). Sourced from
+// Form ADV Schedule D 7.B.(1) in the real data.
+enum FundExclusion {
+  section_3c1 // ≤100 beneficial owners; accredited investors permitted
+  section_3c7 // qualified purchasers only; no holder cap (subject to 12(g))
+}
+
 model Fund {
   id              String          @id @default(uuid())
   sponsorTenantId String
@@ -332,8 +363,14 @@ model Fund {
   closeDate       DateTime? // nullable; only meaningful when structure = drawdown (app-layer enforced)
   status          FundStatus      @default(draft)
   gpSignatoryName String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+
+  // --- Form ADV Schedule D 7.B.(1) characteristics ---
+  exclusion    FundExclusion? // drives the investor eligibility bar — see eligibility.ts
+  domicile     String? // e.g. "Delaware", "Cayman Islands" — bears on W-9 vs W-8BEN
+  isMasterFund Boolean        @default(false)
+  isFeederFund Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   advisorEntitlements FundAdvisorEntitlement[]
   documentTemplates   DocumentTemplate[]

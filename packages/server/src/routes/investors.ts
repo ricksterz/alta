@@ -4,8 +4,10 @@ import {
   AccreditationBasis,
   InvestorType,
   PrincipalRole,
+  QualifiedPurchaserBasis,
   TaxFormType,
 } from "@prisma/client";
+import { qpBasesForInvestorType } from "../workflow/eligibility.js";
 import { requireAdvisorTenant, requireAuth } from "../middleware/requireAuth.js";
 import { audit } from "../audit.js";
 import { upload } from "../upload.js";
@@ -169,9 +171,15 @@ investorsRouter.patch("/:id", async (req, res) => {
 // ---------------------------------------------------------------------------
 // PATCH /investors/:id/accreditation — wizard step 2
 // ---------------------------------------------------------------------------
+// Accreditation and qualified-purchaser status are captured together: they're
+// two answers to "what may this investor buy", and splitting them across steps
+// invites setting one and forgetting the other. qualifiedPurchaserBasis is
+// optional — plenty of investors are accredited but not QPs, and that's a
+// legitimate state, just one that blocks 3(c)(7) funds.
 const accreditationSchema = z.object({
   accreditationBasis: z.nativeEnum(AccreditationBasis),
   accreditationDetails: z.record(z.unknown()).optional(),
+  qualifiedPurchaserBasis: z.nativeEnum(QualifiedPurchaserBasis).nullable().optional(),
 });
 
 investorsRouter.patch("/:id/accreditation", async (req, res) => {
@@ -181,17 +189,28 @@ investorsRouter.patch("/:id/accreditation", async (req, res) => {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const result = await ctx.db.investor.updateMany({
+  const investor = await ctx.db.investor.findFirst({ where: { id: req.params.id } });
+  if (!investor) {
+    return res.status(404).json({ error: "Investor not found" });
+  }
+
+  const qpBasis = parsed.data.qualifiedPurchaserBasis ?? null;
+  if (qpBasis && !qpBasesForInvestorType(investor.type).includes(qpBasis)) {
+    return res.status(400).json({
+      error: `That qualified purchaser basis does not apply to a ${investor.type} investor.`,
+    });
+  }
+
+  await ctx.db.investor.updateMany({
     where: { id: req.params.id },
     data: {
       accreditationBasis: parsed.data.accreditationBasis,
       accreditationDetails: parsed.data.accreditationDetails,
       accreditationAttestedAt: new Date(),
+      qualifiedPurchaserBasis: qpBasis,
+      qpAttestedAt: qpBasis ? new Date() : null,
     },
   });
-  if (result.count === 0) {
-    return res.status(404).json({ error: "Investor not found" });
-  }
 
   await audit(ctx.db, ctx.tenantId, {
     actorType: "advisor_rep",
@@ -199,7 +218,7 @@ investorsRouter.patch("/:id/accreditation", async (req, res) => {
     action: "investor.accreditation_set",
     entityType: "Investor",
     entityId: req.params.id,
-    metadata: { basis: parsed.data.accreditationBasis },
+    metadata: { basis: parsed.data.accreditationBasis, qualifiedPurchaserBasis: qpBasis },
   });
 
   res.status(204).end();

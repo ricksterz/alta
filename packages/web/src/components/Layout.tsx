@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { SiteFooter } from "./SiteFooter";
 
 const ROLE_LABELS: Record<string, string> = {
   advisor_admin: "Admin",
@@ -18,7 +19,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-6">
@@ -60,9 +61,10 @@ export function Layout() {
           )}
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
         <Outlet />
       </main>
+      <SiteFooter />
     </div>
   );
 }

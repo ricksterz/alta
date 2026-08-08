@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../../lib/api";
-import type { AvailableFund, InvestorListItem } from "../../lib/types";
+import type { AvailableFund, EligibilityResult, InvestorListItem } from "../../lib/types";
+
+const EXCLUSION_LABELS: Record<string, string> = {
+  section_3c1: "3(c)(1) — accredited investors, capped at 100 holders",
+  section_3c7: "3(c)(7) — qualified purchasers only",
+};
 
 const VEHICLE_LABELS: Record<string, string> = {
   lp: "LP",
@@ -36,6 +41,26 @@ export function NewSubscriptionPage() {
   const selectedInvestor = investors.find((i) => i.id === investorId);
   const investorNotReady = selectedInvestor && !selectedInvestor.accreditationBasis;
 
+  // Ask the server rather than reimplementing the rules here — the same engine
+  // that will authorize the POST, so the warning can't disagree with the block.
+  const [eligibility, setEligibility] = useState<EligibilityResult | null>(null);
+  useEffect(() => {
+    if (!investorId || !fundId) {
+      setEligibility(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<EligibilityResult>(
+        `/subscriptions/eligibility?investorId=${investorId}&fundId=${fundId}`
+      )
+      .then((r) => !cancelled && setEligibility(r))
+      .catch(() => !cancelled && setEligibility(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [investorId, fundId]);
+
   async function submit() {
     setError(null);
     setSubmitting(true);
@@ -53,7 +78,13 @@ export function NewSubscriptionPage() {
     }
   }
 
-  const canSubmit = investorId && fundId && Number(amount) > 0 && !investorNotReady && selectedFund?.hasTemplate;
+  const canSubmit =
+    investorId &&
+    fundId &&
+    Number(amount) > 0 &&
+    !investorNotReady &&
+    selectedFund?.hasTemplate &&
+    eligibility?.eligible !== false;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -125,6 +156,10 @@ export function NewSubscriptionPage() {
                   This fund has no subscription document template yet — the sponsor must upload one first.
                 </div>
               )}
+              {selectedFund.exclusion && (
+                <div className="mt-1">{EXCLUSION_LABELS[selectedFund.exclusion]}</div>
+              )}
+              {selectedFund.domicile && <div className="mt-1">Domiciled in {selectedFund.domicile}</div>}
               {selectedFund.hasTemplate && selectedFund.templateUnmappedFieldCount > 0 && (
                 <div className="mt-1 text-amber-700">
                   {selectedFund.templateUnmappedFieldCount} template field(s) are unmapped — those will be
@@ -133,6 +168,32 @@ export function NewSubscriptionPage() {
               )}
             </div>
           )}
+        </div>
+
+        {eligibility && eligibility.blockers.length > 0 && (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-3">
+            <p className="mb-1 text-sm font-medium text-red-800">
+              This investor is not eligible for this fund
+            </p>
+            <ul className="space-y-1 text-xs text-red-700">
+              {eligibility.blockers.map((b) => (
+                <li key={b.code}>{b.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {eligibility && eligibility.warnings.length > 0 && (
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-3">
+            <ul className="space-y-1 text-xs text-amber-800">
+              {eligibility.warnings.map((w) => (
+                <li key={w.code}>{w.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div>
         </div>
 
         <div>

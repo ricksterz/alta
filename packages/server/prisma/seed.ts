@@ -73,7 +73,9 @@ async function main() {
 
   await prisma.fund.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
-    update: {},
+    // Same reasoning as the sponsor funds below: a reseed after adding a
+    // column should backfill it rather than leave the fixture stale.
+    update: { exclusion: "section_3c1", domicile: "Delaware" },
     create: {
       id: "00000000-0000-0000-0000-000000000001",
       sponsorTenantId: sponsorTenant.id,
@@ -84,6 +86,10 @@ async function main() {
       minInvestment: 250000,
       status: "active",
       gpSignatoryName: "Priya Nair",
+      // Deliberately 3(c)(1): the one seeded fund a merely-accredited investor
+      // can subscribe to, so the eligibility gate is visible from both sides.
+      exclusion: "section_3c1",
+      domicile: "Delaware",
     },
   });
 
@@ -99,19 +105,12 @@ async function main() {
   // through. The sponsors below add breadth — real names, types, domiciles,
   // and fund sizes — without disturbing that.
   //
-  // Three ADV characteristics are dropped here because Alta's Fund model has
-  // no column for them. Listed explicitly rather than quietly discarded:
-  //   - 3(c)(1) vs 3(c)(7): the investor-eligibility regime. 3(c)(7) requires
-  //     a QUALIFIED PURCHASER (~$5M in investments), a materially higher bar
-  //     than the accredited-investor status Alta models today. Most funds in
-  //     this seed are 3(c)(7), so Alta would currently let a merely-accredited
-  //     investor subscribe to them — a real compliance gap, not cosmetic.
-  //   - domicile: Delaware vs Cayman/Luxembourg/Ireland drives whether W-9 or
-  //     W-8BEN applies. Alta collects both but never ties them to the fund.
-  //   - master/feeder: two independent booleans in ADV, whereas Alta folds a
-  //     partial version of this into vehicleType = llc_feeder.
+  // The real ADV exclusion (3(c)(1) vs 3(c)(7)), domicile, and master/feeder
+  // flags now land on Fund and drive live behaviour: 3(c)(7) funds are gated
+  // to qualified purchasers by workflow/eligibility.ts. Most funds in this
+  // seed are 3(c)(7), and Meridian below is deliberately 3(c)(1), so both
+  // sides of that gate are reachable in a demo.
   let fundCount = 0;
-  const droppedExclusions = new Set<string>();
 
   for (const sponsor of SEED_SPONSORS) {
     const tenant = await prisma.tenant.upsert({
@@ -134,26 +133,39 @@ async function main() {
     });
 
     for (const fund of sponsor.funds) {
-      if (fund.exclusion) droppedExclusions.add(fund.exclusion);
+      // Re-applied rather than skipped when the fund already exists: a reseed
+      // after adding a Fund column should backfill it, not leave stale rows
+      // that silently miss the new data.
+      const fundData = {
+        legalName: fund.legalName,
+        vehicleType: fund.vehicleType,
+        structure: fund.structure,
+        minInvestment: fund.minInvestment,
+        closeDate: fund.closeDate ? new Date(fund.closeDate) : null,
+        status: "active" as const,
+        gpSignatoryName: fund.gpSignatoryName,
+        exclusion:
+          fund.exclusion === "3c7"
+            ? ("section_3c7" as const)
+            : fund.exclusion === "3c1"
+              ? ("section_3c1" as const)
+              : null,
+        domicile: fund.domicile,
+        isMasterFund: fund.isMasterFund,
+        isFeederFund: fund.isFeederFund,
+      };
+
       const existing = await prisma.fund.findFirst({
         where: { sponsorTenantId: tenant.id, name: fund.name },
       });
-      if (existing) continue;
-
-      await prisma.fund.create({
-        data: {
-          sponsorTenantId: tenant.id,
-          name: fund.name,
-          legalName: fund.legalName,
-          vehicleType: fund.vehicleType,
-          structure: fund.structure,
-          minInvestment: fund.minInvestment,
-          closeDate: fund.closeDate ? new Date(fund.closeDate) : null,
-          status: "active",
-          gpSignatoryName: fund.gpSignatoryName,
-        },
-      });
-      fundCount++;
+      if (existing) {
+        await prisma.fund.update({ where: { id: existing.id }, data: fundData });
+      } else {
+        await prisma.fund.create({
+          data: { sponsorTenantId: tenant.id, name: fund.name, ...fundData },
+        });
+        fundCount++;
+      }
     }
   }
 
@@ -253,10 +265,6 @@ async function main() {
       `${entitlementCount} entitlements to ${advisorTenant.slug}, ${templateCount} templates.`
   );
   for (const s of SEED_SPONSORS) console.log(`  ${s.gpEmail} / ${DEV_PASSWORD} — ${s.name}`);
-  console.log(
-    `NOTE: dropped ADV characteristics with no Fund column: ` +
-      `exclusion (${[...droppedExclusions].join("/")}) , domicile, master/feeder.`
-  );
 }
 
 main()

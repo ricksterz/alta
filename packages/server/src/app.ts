@@ -10,6 +10,7 @@ import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { CANONICAL_FIELDS, CANONICAL_FIELD_REGISTRY_VERSION } from "./canonicalFields.js";
+import { QP_BASIS_LABELS, qpBasesForInvestorType } from "./workflow/eligibility.js";
 
 export function createApp() {
   const app = express();
@@ -34,6 +35,21 @@ export function createApp() {
 
   app.get("/canonical-fields", requireAuth, (_req, res) => {
     res.json({ version: CANONICAL_FIELD_REGISTRY_VERSION, fields: CANONICAL_FIELDS });
+  });
+
+  // Qualified purchaser bases, with the investor types each applies to. Served
+  // rather than duplicated in the frontend so the wizard's options and the
+  // server's validation can't drift apart.
+  app.get("/qp-bases", requireAuth, (_req, res) => {
+    res.json(
+      (Object.keys(QP_BASIS_LABELS) as (keyof typeof QP_BASIS_LABELS)[]).map((key) => ({
+        key,
+        label: QP_BASIS_LABELS[key],
+        appliesTo: (["individual", "joint", "entity", "trust"] as const).filter((t) =>
+          qpBasesForInvestorType(t).includes(key)
+        ),
+      }))
+    );
   });
 
   app.use(errorHandler);

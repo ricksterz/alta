@@ -236,6 +236,7 @@ model Investor {
   positions         Position[]
   transfersReceived TransferRequest[]       @relation("TransferToInvestor")
 
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("investors")
 }
@@ -607,8 +608,16 @@ model Subscription {
   fundAdminTenantId String?
   fundAdminTenant   Tenant?            @relation("SubscriptionFundAdmin", fields: [fundAdminTenantId], references: [id])
   investorId        String
-  investor          Investor           @relation(fields: [investorId], references: [id])
+  // Composite FK, not a bare id reference. Makes it structurally impossible for
+  // a subscription to point at another tenant's investor — previously prevented
+  // only by every route sourcing related ids from an already tenant-scoped
+  // lookup, which is code discipline rather than a guarantee. The leak this
+  // closes is characterised in db/includeScoping.test.ts.
+  investor          Investor           @relation(fields: [tenantId, investorId], references: [tenantId, id])
   fundId            String
+  // Deliberately NOT composite: a subscription's fund belongs to a different
+  // (sponsor) tenant by design, so there is no shared column to key on. That
+  // one cross-tenant reference remains code-enforced, via the entitlement check.
   fund              Fund               @relation(fields: [fundId], references: [id])
   status            SubscriptionStatus @default(draft)
   amount            Decimal?           @db.Decimal(18, 2)
@@ -634,6 +643,7 @@ model Subscription {
   signatures SignatureRequest[]
   position   Position?
 
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@index([sponsorTenantId])
   @@index([fundAdminTenantId])
@@ -808,12 +818,12 @@ model Position {
   sponsorTenantId String
   sponsorTenant   Tenant   @relation("PositionSponsor", fields: [sponsorTenantId], references: [id])
   investorId      String
-  investor        Investor @relation(fields: [investorId], references: [id])
+  investor        Investor @relation(fields: [tenantId, investorId], references: [tenantId, id])
   fundId          String
   fund            Fund     @relation(fields: [fundId], references: [id])
 
   subscriptionId String       @unique // the subscription that created it
-  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  subscription   Subscription @relation(fields: [tenantId, subscriptionId], references: [tenantId, id])
 
   commitmentAmount Decimal        @db.Decimal(18, 2)
   fundedAmount     Decimal        @default(0) @db.Decimal(18, 2)
@@ -834,6 +844,7 @@ model Position {
 
   transfersOut TransferRequest[] @relation("TransferFromPosition")
 
+  @@unique([tenantId, subscriptionId])
   @@index([tenantId])
   @@index([sponsorTenantId])
   @@index([fundId])

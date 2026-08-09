@@ -14,6 +14,7 @@ import { TemplateMappingPage } from "./pages/funds/TemplateMappingPage";
 import { NewSubscriptionPage } from "./pages/subscriptions/NewSubscriptionPage";
 import { SubscriptionDetailPage } from "./pages/subscriptions/SubscriptionDetailPage";
 import { SubscriptionsQueuePage } from "./pages/subscriptions/SubscriptionsQueuePage";
+import { RegisterPage } from "./pages/RegisterPage";
 
 export function App() {
   return (
@@ -36,6 +37,8 @@ export function App() {
             <Route path="/subscriptions" element={<SubscriptionsQueuePage />} />
             <Route path="/subscriptions/new" element={<NewSubscriptionPage />} />
             <Route path="/subscriptions/:id" element={<SubscriptionDetailPage />} />
+
+            <Route path="/register" element={<RegisterPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

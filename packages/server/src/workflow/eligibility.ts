@@ -22,6 +22,13 @@ import type {
 // verification of net worth, investments, or QP status — see the disclosures
 // in the web app footer. This is an eligibility gate, not a diligence process.
 
+export interface HolderCapacitySnapshot {
+  currentHolders: number;
+  cap: number | null;
+  remaining: number | null;
+  atCapacity: boolean;
+}
+
 export interface EligibilityInput {
   investor: {
     type: InvestorType;
@@ -32,6 +39,12 @@ export interface EligibilityInput {
     exclusion: FundExclusion | null;
     name: string;
   };
+  /**
+   * Register-derived holder capacity, when the caller has looked it up.
+   * Optional because eligibility is also evaluated in contexts with no fund
+   * register to consult, and a missing count must not read as "no cap".
+   */
+  holderCapacity?: HolderCapacitySnapshot;
 }
 
 export interface EligibilityResult {
@@ -70,7 +83,11 @@ export function qpBasesForInvestorType(type: InvestorType): QualifiedPurchaserBa
   );
 }
 
-export function checkEligibility({ investor, fund }: EligibilityInput): EligibilityResult {
+export function checkEligibility({
+  investor,
+  fund,
+  holderCapacity,
+}: EligibilityInput): EligibilityResult {
   const blockers: EligibilityResult["blockers"] = [];
   const warnings: EligibilityResult["warnings"] = [];
 
@@ -105,16 +122,37 @@ export function checkEligibility({ investor, fund }: EligibilityInput): Eligibil
   }
 
   if (fund.exclusion === "section_3c1") {
-    // The 100-beneficial-owner cap is a fund-level constraint we can't evaluate
-    // from Alta's data — the count spans every subscription across every
-    // advisor firm, and Alta only sees its own tenants'. Surfaced so a rep
-    // knows to confirm with the GP rather than silently assuming headroom.
-    warnings.push({
-      code: "3c1_holder_cap",
-      message:
-        `${fund.name} relies on the 3(c)(1) exclusion, which is capped at 100 beneficial ` +
-        `owners. Alta cannot verify remaining capacity — confirm with the fund sponsor.`,
-    });
+    // The 100-beneficial-owner cap. Alta can now evaluate this against its own
+    // holder register (workflow/holderRegister.ts) rather than deferring to the
+    // sponsor — but only for funds whose holders subscribed THROUGH Alta.
+    // Capacity is passed in by the caller when available; absent it, the
+    // honest answer is still "confirm with the sponsor".
+    if (holderCapacity && holderCapacity.cap !== null) {
+      if (holderCapacity.atCapacity) {
+        blockers.push({
+          code: "holder_cap_reached",
+          message:
+            `${fund.name} is at its 100 beneficial-owner limit under the 3(c)(1) ` +
+            `exclusion. No further holders can be admitted.`,
+        });
+      } else {
+        warnings.push({
+          code: "3c1_holder_cap",
+          message:
+            `${fund.name} relies on the 3(c)(1) exclusion (100 beneficial owners). ` +
+            `${holderCapacity.currentHolders} of 100 recorded on Alta; ` +
+            `${holderCapacity.remaining} remaining. Holders who subscribed outside ` +
+            `Alta are not counted — confirm the total with the fund sponsor.`,
+        });
+      }
+    } else {
+      warnings.push({
+        code: "3c1_holder_cap",
+        message:
+          `${fund.name} relies on the 3(c)(1) exclusion, which is capped at 100 beneficial ` +
+          `owners. Alta cannot verify remaining capacity — confirm with the fund sponsor.`,
+      });
+    }
   }
 
   if (fund.exclusion === null) {

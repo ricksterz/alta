@@ -6,12 +6,14 @@ const ROLE_LABELS: Record<string, string> = {
   advisor_admin: "Admin",
   advisor_rep: "Rep",
   gp_ops: "GP Ops",
+  fund_admin_ops: "Fund Admin",
 };
 
 export function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const isSponsor = user?.tenantType === "sponsor_firm";
+  const isFundAdmin = user?.tenantType === "fund_admin";
 
   async function handleLogout() {
     await logout();
@@ -28,11 +30,12 @@ export function Layout() {
             </Link>
             {user && (
               <nav className="flex items-center gap-4 text-sm text-slate-600">
-                {isSponsor ? (
+                {isSponsor && (
                   <Link to="/funds" className="hover:text-slate-900">
                     Funds
                   </Link>
-                ) : (
+                )}
+                {!isSponsor && !isFundAdmin && (
                   <Link to="/investors" className="hover:text-slate-900">
                     Investors
                   </Link>
@@ -40,6 +43,11 @@ export function Layout() {
                 <Link to="/subscriptions" className="hover:text-slate-900">
                   Subscriptions
                 </Link>
+                {!isFundAdmin && (
+                  <Link to="/register" className="hover:text-slate-900">
+                    Register
+                  </Link>
+                )}
               </nav>
             )}
           </div>

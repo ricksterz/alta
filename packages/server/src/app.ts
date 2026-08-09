@@ -7,6 +7,7 @@ import { fundsRouter } from "./routes/funds.js";
 import { fundTemplatesRouter, templatesRouter } from "./routes/templates.js";
 import { advisorTenantsRouter } from "./routes/advisorTenants.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
+import { positionsRouter } from "./routes/positions.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { CANONICAL_FIELDS, CANONICAL_FIELD_REGISTRY_VERSION } from "./canonicalFields.js";
@@ -32,6 +33,7 @@ export function createApp() {
   app.use("/templates", templatesRouter); // /templates/:id[/mappings/:mappingId]
   app.use("/advisor-tenants", advisorTenantsRouter);
   app.use("/subscriptions", subscriptionsRouter);
+  app.use("/positions", positionsRouter);
 
   app.get("/canonical-fields", requireAuth, (_req, res) => {
     res.json({ version: CANONICAL_FIELD_REGISTRY_VERSION, fields: CANONICAL_FIELDS });

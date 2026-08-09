@@ -41,6 +41,7 @@ datasource db {
 enum TenantType {
   advisor_firm
   sponsor_firm
+  fund_admin // fund administrator (Gen II, Citco, Alter Domus, …)
 }
 
 model Tenant {
@@ -64,6 +65,15 @@ model Tenant {
   sponsoredFieldMappings FieldMapping[]
   sponsoredSubscriptions Subscription[]           @relation("SubscriptionSponsor")
 
+  // Phase 5 — fund_admin side
+  administeredFunds         Fund[]         @relation("FundAdministrator")
+  administeredSubscriptions Subscription[] @relation("SubscriptionFundAdmin")
+
+  // Phase 6 — positions & transfers
+  advisorPositions Position[]        @relation("PositionAdvisor")
+  sponsorPositions Position[]        @relation("PositionSponsor")
+  transferRequests TransferRequest[]
+
   @@map("tenants")
 }
 
@@ -74,6 +84,7 @@ enum AdvisorRole {
   advisor_rep
   advisor_admin
   gp_ops
+  fund_admin_ops
 }
 
 model AdvisorRep {
@@ -218,10 +229,12 @@ model Investor {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  principals    InvestorPrincipal[]
-  taxProfile    InvestorTaxProfile?
-  evidence      AccreditationEvidence[]
-  subscriptions Subscription[]
+  principals        InvestorPrincipal[]
+  taxProfile        InvestorTaxProfile?
+  evidence          AccreditationEvidence[]
+  subscriptions     Subscription[]
+  positions         Position[]
+  transfersReceived TransferRequest[]       @relation("TransferToInvestor")
 
   @@index([tenantId])
   @@map("investors")
@@ -372,12 +385,55 @@ model Fund {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
+  // The fund administrator, when one is on the platform. Nullable: plenty of
+  // funds have no admin engaged here, in which case the GP performs fund-admin
+  // review itself. The state machine falls back accordingly rather than
+  // stranding the subscription.
+  fundAdminTenantId String?
+  fundAdminTenant   Tenant? @relation("FundAdministrator", fields: [fundAdminTenantId], references: [id])
+
   advisorEntitlements FundAdvisorEntitlement[]
   documentTemplates   DocumentTemplate[]
   subscriptions       Subscription[]
+  closes              FundClose[]
+  positions           Position[]
 
   @@index([sponsorTenantId])
+  @@index([fundAdminTenantId])
   @@map("funds")
+}
+
+enum FundCloseStatus {
+  open
+  closed
+  cancelled
+}
+
+// A subscription window. Drawdown funds have a handful (first close, second
+// close, final close); evergreen/continuous funds have a recurring cadence
+// (monthly or quarterly), which is why this is its own table rather than the
+// single closeDate on Fund — that column only ever described the drawdown case
+// and cannot express "the next of many".
+//
+// A subscription targets exactly one close. Accepting after the close date is
+// the fund admin's call, not something the schema forbids: real closes slip.
+model FundClose {
+  id              String          @id @default(uuid())
+  sponsorTenantId String
+  fundId          String
+  fund            Fund            @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  name            String // "Q3 2027 Close", "Final Close"
+  closeDate       DateTime
+  status          FundCloseStatus @default(open)
+  targetAmount    Decimal?        @db.Decimal(18, 2)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([sponsorTenantId])
+  @@index([fundId])
+  @@map("fund_closes")
 }
 
 enum EntitlementStatus {
@@ -429,11 +485,68 @@ model DocumentTemplate {
   uploadedAt        DateTime               @default(now())
 
   fieldMappings         FieldMapping[]
+  signatureBlocks       SignatureBlock[]
   subscriptionDocuments SubscriptionDocument[]
 
   @@index([sponsorTenantId])
   @@index([fundId])
   @@map("document_templates")
+}
+
+enum SignatureBlockType {
+  signature
+  initials
+  date
+}
+
+// One executable mark on a template — a signature line, an initial box, a date
+// field. Real subscription agreements run 50–100 pages and carry many of these
+// per signer (initial each page of the accredited-investor questionnaire, sign
+// the signature page, date it), which is why a document cannot be modeled as
+// "one signature per signer".
+//
+// These come from the same Anvil field detection as FieldMapping — a CastField
+// with type "signature" is a block, everything else is a data field — but they
+// live in their own table because the semantics differ: a data field is FILLED
+// from investor records, a block is EXECUTED by a person.
+model SignatureBlock {
+  id              String             @id @default(uuid())
+  sponsorTenantId String
+  templateId      String
+  template        DocumentTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  anvilFieldKey   String // CastField.id
+  label           String?
+  blockType       SignatureBlockType @default(signature)
+  signerRole      SignerRole // which side executes this mark
+  pageNum         Int                @default(1)
+  required        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+
+  fulfillments SignatureBlockFulfillment[]
+
+  @@unique([templateId, anvilFieldKey])
+  @@index([sponsorTenantId])
+  @@map("signature_blocks")
+}
+
+// Evidence that a specific block was executed by a specific signature request.
+// Separate from SignatureRequest so "who signed" and "what exactly they
+// executed" are distinguishable — the question an auditor asks about a
+// 90-page document is not "did they sign" but "which marks are present".
+model SignatureBlockFulfillment {
+  id                 String           @id @default(uuid())
+  tenantId           String
+  sponsorTenantId    String
+  signatureRequestId String
+  signatureRequest   SignatureRequest @relation(fields: [signatureRequestId], references: [id], onDelete: Cascade)
+  signatureBlockId   String
+  signatureBlock     SignatureBlock   @relation(fields: [signatureBlockId], references: [id])
+  appliedValue       String // rendered mark: typed name, initials, or date
+  appliedAt          DateTime         @default(now())
+
+  @@unique([signatureRequestId, signatureBlockId])
+  @@index([tenantId])
+  @@map("signature_block_fulfillments")
 }
 
 enum FieldMappingType {
@@ -484,17 +597,23 @@ enum SubscriptionStatus {
 // other's unrelated subscriptions while both can see this one. See
 // DUAL_TENANT_MODELS in src/db/scopedClient.ts.
 model Subscription {
-  id              String             @id @default(uuid())
-  tenantId        String // advisor tenant that owns the investor relationship
-  tenant          Tenant             @relation(fields: [tenantId], references: [id])
-  sponsorTenantId String // sponsor tenant that owns the fund — denormalized from fund
-  sponsorTenant   Tenant             @relation("SubscriptionSponsor", fields: [sponsorTenantId], references: [id])
-  investorId      String
-  investor        Investor           @relation(fields: [investorId], references: [id])
-  fundId          String
-  fund            Fund               @relation(fields: [fundId], references: [id])
-  status          SubscriptionStatus @default(draft)
-  amount          Decimal?           @db.Decimal(18, 2)
+  id                String             @id @default(uuid())
+  tenantId          String // advisor tenant that owns the investor relationship
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  sponsorTenantId   String // sponsor tenant that owns the fund — denormalized from fund
+  sponsorTenant     Tenant             @relation("SubscriptionSponsor", fields: [sponsorTenantId], references: [id])
+  // Third owner, when the fund has an administrator on-platform. Null is the
+  // common case and means the sponsor performs fund-admin review itself.
+  fundAdminTenantId String?
+  fundAdminTenant   Tenant?            @relation("SubscriptionFundAdmin", fields: [fundAdminTenantId], references: [id])
+  investorId        String
+  investor          Investor           @relation(fields: [investorId], references: [id])
+  fundId            String
+  fund              Fund               @relation(fields: [fundId], references: [id])
+  status            SubscriptionStatus @default(draft)
+  amount            Decimal?           @db.Decimal(18, 2)
+  fundCloseId       String?
+  fundClose         FundClose?         @relation(fields: [fundCloseId], references: [id])
 
   // Lifecycle timestamps — set as the subscription moves through the state
   // machine (src/workflow/subscriptionStatus.ts). Nullable because a given
@@ -513,9 +632,11 @@ model Subscription {
 
   documents  SubscriptionDocument[]
   signatures SignatureRequest[]
+  position   Position?
 
   @@index([tenantId])
   @@index([sponsorTenantId])
+  @@index([fundAdminTenantId])
   @@index([investorId])
   @@map("subscriptions")
 }
@@ -606,6 +727,8 @@ model SignatureRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  fulfillments SignatureBlockFulfillment[]
+
   @@index([tenantId])
   @@index([sponsorTenantId])
   @@index([subscriptionId])
@@ -639,4 +762,130 @@ model AuditEvent {
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, createdAt])
   @@map("audit_events")
+}
+
+// ---------------------------------------------------------------------------
+// Positions, holder register & tokenization
+// ---------------------------------------------------------------------------
+
+enum PositionStatus {
+  active
+  partially_transferred
+  transferred
+  redeemed
+}
+
+enum TokenizationStatus {
+  none // not tokenized — the default and the common case
+  pending // mint requested, not yet confirmed on chain
+  minted
+  frozen // transfer-restricted by the issuer or agent
+}
+
+// What an investor actually HOLDS once a subscription funds. Alta had no such
+// record before: the workflow ended at status = funded, which is the moment a
+// position begins rather than the end of anything.
+//
+// Owning this table is what makes Alta a holder register rather than a document
+// pipeline, and it has two consequences that matter:
+//
+//  1. The 3(c)(1) 100-beneficial-owner cap becomes verifiable. Previously it
+//     could only be surfaced as a warning ("confirm with the sponsor") because
+//     the count spans every advisor firm and Alta saw only its own tenants'.
+//     A register scoped to the FUND can count it.
+//  2. It is the thing a token represents. A compliant security token
+//     (ERC-3643 / ERC-1400) is a claim on a position plus a transfer rule; the
+//     token fields below record the on-chain representation, and the transfer
+//     rule is Alta's existing eligibility engine.
+//
+// Tokenization here is deliberately record-keeping only. Alta stores chain
+// identifiers and answers compliance questions about proposed transfers; it
+// does not hold keys, sign transactions, or broadcast to any chain.
+model Position {
+  id              String   @id @default(uuid())
+  tenantId        String // advisor tenant that services the investor
+  advisorTenant   Tenant   @relation("PositionAdvisor", fields: [tenantId], references: [id])
+  sponsorTenantId String
+  sponsorTenant   Tenant   @relation("PositionSponsor", fields: [sponsorTenantId], references: [id])
+  investorId      String
+  investor        Investor @relation(fields: [investorId], references: [id])
+  fundId          String
+  fund            Fund     @relation(fields: [fundId], references: [id])
+
+  subscriptionId String       @unique // the subscription that created it
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+
+  commitmentAmount Decimal        @db.Decimal(18, 2)
+  fundedAmount     Decimal        @default(0) @db.Decimal(18, 2)
+  units            Decimal?       @db.Decimal(28, 8) // unitized vehicles only
+  status           PositionStatus @default(active)
+
+  // --- On-chain representation (optional) ---
+  tokenization        TokenizationStatus @default(none)
+  chain               String? // "ethereum" | "polygon" | "base" | …
+  tokenStandard       String? // "ERC-3643" | "ERC-1400"
+  contractAddress     String?
+  tokenId             String?
+  holderWalletAddress String?
+  mintedAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transfersOut TransferRequest[] @relation("TransferFromPosition")
+
+  @@index([tenantId])
+  @@index([sponsorTenantId])
+  @@index([fundId])
+  @@index([investorId])
+  @@map("positions")
+}
+
+enum TransferStatus {
+  pending_eligibility // transferee eligibility being evaluated
+  pending_gp_consent // most LPAs require GP consent to transfer
+  approved
+  rejected
+  settled
+}
+
+// A secondary transfer of a position to another investor. Modeled because a
+// tokenized interest whose transfers are not gated is not a compliant
+// security: the whole point of ERC-3643-style standards is that the transfer
+// rule travels with the asset. Here the rule is checkEligibility() against the
+// TRANSFEREE plus the fund's holder cap, and GP consent on top — the same
+// consent an LPA requires off-chain.
+model TransferRequest {
+  id                  String @id @default(uuid())
+  tenantId            String
+  sponsorTenantId     String
+  requestedByTenantId String
+  requestedByTenant   Tenant @relation(fields: [requestedByTenantId], references: [id])
+
+  positionId String
+  position   Position @relation("TransferFromPosition", fields: [positionId], references: [id])
+
+  toInvestorId String
+  toInvestor   Investor @relation("TransferToInvestor", fields: [toInvestorId], references: [id])
+
+  amount Decimal  @db.Decimal(18, 2)
+  units  Decimal? @db.Decimal(28, 8)
+
+  status TransferStatus @default(pending_eligibility)
+
+  // Verbatim eligibility verdict at request time. Stored rather than
+  // recomputed: whether a transfer was permissible is a question about the
+  // moment it was approved, not about today's records.
+  eligibilitySnapshot Json?
+  rejectionReason     String?
+
+  decidedAt DateTime?
+  settledAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([sponsorTenantId])
+  @@index([positionId])
+  @@map("transfer_requests")
 }

@@ -41,14 +41,14 @@ export type SubscriptionStatus =
   | "rejected"
   | "funded";
 
-export type TenantType = "advisor_firm" | "sponsor_firm";
+export type TenantType = "advisor_firm" | "sponsor_firm" | "fund_admin";
 
 export interface AdvisorRepSummary {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: "advisor_rep" | "advisor_admin" | "gp_ops";
+  role: "advisor_rep" | "advisor_admin" | "gp_ops" | "fund_admin_ops";
   tenantId: string;
   tenantType: TenantType;
 }
@@ -251,6 +251,8 @@ export interface SignatureRequestItem {
   status: SignatureStatus;
   signedAt: string | null;
   typedName: string | null;
+  /** Count of template signature/initial/date marks this signer executed. */
+  blocksExecuted?: number;
 }
 
 export interface SubscriptionDocumentItem {
@@ -298,4 +300,43 @@ export interface EligibilityResult {
   eligible: boolean;
   blockers: { code: string; message: string }[];
   warnings: { code: string; message: string }[];
+}
+
+// --- Phase 5/6: fund admin, closes, signature blocks, positions, tokenization ---
+
+export type FundCloseStatus = "open" | "closed" | "cancelled";
+export type SignatureBlockType = "signature" | "initials" | "date";
+export type PositionStatus = "active" | "partially_transferred" | "transferred" | "redeemed";
+export type TokenizationStatus = "none" | "pending" | "minted" | "frozen";
+
+export interface FundCloseItem {
+  id: string;
+  name: string;
+  closeDate: string;
+  status: FundCloseStatus;
+  targetAmount: string | null;
+  subscriptionCount: number;
+}
+
+export interface PositionListItem {
+  id: string;
+  investor: { id: string; displayName: string };
+  fund: { id: string; name: string; exclusion: FundExclusion | null };
+  commitmentAmount: string;
+  fundedAmount: string;
+  status: PositionStatus;
+  tokenization: TokenizationStatus;
+  chain: string | null;
+  tokenStandard: string | null;
+  contractAddress: string | null;
+  tokenId: string | null;
+  holderWalletAddress: string | null;
+  createdAt: string;
+}
+
+export interface HolderCapacity {
+  currentHolders: number;
+  cap: number | null;
+  remaining: number | null;
+  atCapacity: boolean;
 }

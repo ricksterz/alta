@@ -39,6 +39,11 @@ function SignatureRow({
               {signature.typedName} ·{" "}
               {signature.signedAt && new Date(signature.signedAt).toLocaleString()}
             </div>
+            {typeof signature.blocksExecuted === "number" && signature.blocksExecuted > 0 && (
+              <div className="mt-0.5 text-xs text-slate-400">
+                {signature.blocksExecuted} mark{signature.blocksExecuted === 1 ? "" : "s"} executed
+              </div>
+            )}
           </div>
         ) : canSign ? (
           <button
@@ -103,6 +108,11 @@ export function SubscriptionDetailPage() {
   const [showReject, setShowReject] = useState(false);
 
   const isSponsor = user?.tenantType === "sponsor_firm";
+  const isFundAdmin = user?.tenantType === "fund_admin";
+  // Both sponsor and fund admin view a subscription as a reviewer rather than
+  // its originator: they see the advisor firm, and they get the decision
+  // controls the state machine permits them.
+  const isReviewer = isSponsor || isFundAdmin;
 
   const load = useCallback(() => {
     if (!id) return;
@@ -136,7 +146,7 @@ export function SubscriptionDetailPage() {
   return (
     <div>
       <Link
-        to={isSponsor ? "/subscriptions" : `/investors/${sub.investor.id}`}
+        to={isReviewer ? "/subscriptions" : `/investors/${sub.investor.id}`}
         className="mb-4 inline-block text-sm text-slate-500 hover:underline"
       >
         ← Back
@@ -148,7 +158,7 @@ export function SubscriptionDetailPage() {
           <p className="text-sm text-slate-500">
             {sub.fund.name}
             {sub.amount && ` · ${Number(sub.amount).toLocaleString("en-US", { style: "currency", currency: "USD" })}`}
-            {isSponsor && ` · via ${sub.advisorFirm}`}
+            {isReviewer && ` · via ${sub.advisorFirm}`}
           </p>
         </div>
         <StatusBadge status={sub.status} />
@@ -174,7 +184,7 @@ export function SubscriptionDetailPage() {
                 No document generated yet. Generating fills the sponsor's template using this
                 investor's profile data.
               </p>
-              {!isSponsor && sub.status === "pending_investor_data" && (
+              {!isReviewer && sub.status === "pending_investor_data" && (
                 <button
                   type="button"
                   disabled={busy}
@@ -244,8 +254,10 @@ export function SubscriptionDetailPage() {
           ) : (
             <ul className="space-y-2">
               {sub.signatures.map((s) => {
+                // Only the sponsor countersigns; only the advisor captures
+                // investor signatures. A fund administrator signs neither.
                 const isMySide =
-                  s.role === "gp_countersigner" ? isSponsor : !isSponsor;
+                  s.role === "gp_countersigner" ? isSponsor : !isReviewer;
                 const earlierPending = sub.signatures.some(
                   (o) => o.sequence < s.sequence && o.status === "pending"
                 );
@@ -266,7 +278,7 @@ export function SubscriptionDetailPage() {
           )}
 
           {/* --- GP decisions --- */}
-          {isSponsor && sub.allowedNext.length > 0 && (
+          {isReviewer && sub.allowedNext.length > 0 && (
             <div className="mt-6 border-t border-slate-100 pt-4">
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Fund admin

@@ -54,3 +54,21 @@ export function readyTemplateForFund(fundId: string) {
     include: { fieldMappings: true },
   });
 }
+
+/** The next open close for a fund, by date. Safe: a fund's close calendar is
+ *  offering information any entitled advisor legitimately sees, and callers
+ *  must already have proven entitlement to reach this. */
+export function nextOpenClose(fundId: string) {
+  return prisma.fundClose.findFirst({
+    where: { fundId, status: "open" },
+    orderBy: { closeDate: "asc" },
+  });
+}
+
+/** A fund's full close calendar, for display alongside an offering. */
+export function closesForFund(fundId: string) {
+  return prisma.fundClose.findMany({
+    where: { fundId },
+    orderBy: { closeDate: "asc" },
+  });
+}

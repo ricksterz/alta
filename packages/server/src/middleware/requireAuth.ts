@@ -53,3 +53,21 @@ export function requireAdvisorTenant(req: Request, res: Response, next: NextFunc
   }
   next();
 }
+
+export function requireFundAdminTenant(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "fund_admin") {
+    return res.status(403).json({ error: "Fund administrator tenant required" });
+  }
+  next();
+}
+
+// Fund-admin review is performed by the administrator when one is engaged and
+// by the sponsor otherwise, so routes covering that step accept either and
+// defer the actual decision to the state machine, which knows whether the
+// specific fund has an administrator.
+export function requireSponsorOrFundAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "sponsor_firm" && req.ctx?.tenantType !== "fund_admin") {
+    return res.status(403).json({ error: "Sponsor or fund administrator tenant required" });
+  }
+  next();
+}

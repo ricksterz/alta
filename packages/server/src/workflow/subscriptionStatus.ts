@@ -10,10 +10,22 @@ import type { SubscriptionStatus, TenantType } from "@prisma/client";
 export interface TransitionRule {
   from: SubscriptionStatus;
   to: SubscriptionStatus;
-  /** Which tenant type may perform this transition. */
-  actor: TenantType;
+  /**
+   * Which tenant type may perform this transition. Fund-admin-review steps
+   * list BOTH fund_admin and sponsor_firm: the administrator performs them
+   * when the fund has engaged one, the sponsor otherwise. assertTransition
+   * resolves which, given the specific subscription.
+   */
+  actors: TenantType[];
   /** Short description, used in audit metadata and error messages. */
   label: string;
+}
+
+/** Just enough of a subscription to resolve who may act on it. */
+export interface TransitionSubject {
+  status: SubscriptionStatus;
+  /** Null when no fund administrator is engaged for this fund. */
+  fundAdminTenantId?: string | null;
 }
 
 export const TRANSITIONS: TransitionRule[] = [
@@ -21,19 +33,19 @@ export const TRANSITIONS: TransitionRule[] = [
   {
     from: "draft",
     to: "pending_investor_data",
-    actor: "advisor_firm",
+    actors: ["advisor_firm"],
     label: "Subscription started",
   },
   {
     from: "pending_investor_data",
     to: "pending_signatures",
-    actor: "advisor_firm",
+    actors: ["advisor_firm"],
     label: "Document generated and sent for signature",
   },
   {
     from: "pending_signatures",
     to: "pending_gp_countersign",
-    actor: "advisor_firm",
+    actors: ["advisor_firm"],
     label: "Investor signature(s) complete",
   },
 
@@ -41,31 +53,31 @@ export const TRANSITIONS: TransitionRule[] = [
   {
     from: "pending_gp_countersign",
     to: "pending_fund_admin_review",
-    actor: "sponsor_firm",
+    actors: ["sponsor_firm"],
     label: "GP countersigned",
   },
   {
     from: "pending_fund_admin_review",
     to: "accepted",
-    actor: "sponsor_firm",
+    actors: ["fund_admin", "sponsor_firm"],
     label: "Accepted by fund admin",
   },
   {
     from: "pending_fund_admin_review",
     to: "rejected",
-    actor: "sponsor_firm",
+    actors: ["fund_admin", "sponsor_firm"],
     label: "Rejected by fund admin",
   },
   {
     from: "pending_gp_countersign",
     to: "rejected",
-    actor: "sponsor_firm",
+    actors: ["sponsor_firm"],
     label: "Rejected at countersign",
   },
   {
     from: "accepted",
     to: "funded",
-    actor: "sponsor_firm",
+    actors: ["fund_admin", "sponsor_firm"],
     label: "Capital received — funded",
   },
 ];
@@ -78,11 +90,32 @@ export class TransitionError extends Error {
   }
 }
 
+const ACTOR_LABELS: Record<TenantType, string> = {
+  advisor_firm: "advisor firm",
+  sponsor_firm: "fund sponsor",
+  fund_admin: "fund administrator",
+};
+
+/**
+ * Resolves which single tenant type may perform a transition on THIS
+ * subscription. For steps listing both fund_admin and sponsor_firm, an engaged
+ * administrator takes exclusive responsibility — otherwise both could act and
+ * the record would not show who owns the review.
+ */
+export function effectiveActor(
+  rule: TransitionRule,
+  subject: TransitionSubject
+): TenantType {
+  if (rule.actors.length === 1) return rule.actors[0];
+  return subject.fundAdminTenantId ? "fund_admin" : "sponsor_firm";
+}
+
 export function assertTransition(
-  from: SubscriptionStatus,
+  subject: TransitionSubject,
   to: SubscriptionStatus,
   actor: TenantType
 ): TransitionRule {
+  const from = subject.status;
   const rule = TRANSITIONS.find((t) => t.from === from && t.to === to);
   if (!rule) {
     throw new TransitionError(
@@ -90,11 +123,10 @@ export function assertTransition(
         `Valid next states: ${allowedNext(from).join(", ") || "none (terminal)"}.`
     );
   }
-  if (rule.actor !== actor) {
+  const required = effectiveActor(rule, subject);
+  if (required !== actor) {
     throw new TransitionError(
-      `This transition is performed by the ${
-        rule.actor === "sponsor_firm" ? "fund sponsor" : "advisor firm"
-      }, not by you.`,
+      `This transition is performed by the ${ACTOR_LABELS[required]}, not by you.`,
       403
     );
   }

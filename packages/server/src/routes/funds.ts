@@ -151,6 +151,97 @@ fundsRouter.patch("/:id", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Fund closes — subscription windows
+// ---------------------------------------------------------------------------
+// Drawdown funds have a handful of these; evergreen/continuous funds have a
+// recurring cadence. Both use the same model, which is why Fund.closeDate
+// (drawdown-only, single) is no longer sufficient on its own.
+
+fundsRouter.get("/:id/closes", async (req, res) => {
+  const db = req.ctx!.db;
+  const closes = await db.fundClose.findMany({
+    where: { fundId: req.params.id },
+    orderBy: { closeDate: "asc" },
+    include: { _count: { select: { subscriptions: true } } },
+  });
+  res.json(
+    closes.map((c) => ({
+      id: c.id,
+      name: c.name,
+      closeDate: c.closeDate,
+      status: c.status,
+      targetAmount: c.targetAmount,
+      subscriptionCount: c._count.subscriptions,
+    }))
+  );
+});
+
+const createCloseSchema = z.object({
+  name: z.string().min(1),
+  closeDate: z.string().datetime(),
+  targetAmount: z.number().positive().optional(),
+});
+
+fundsRouter.post("/:id/closes", async (req, res) => {
+  const ctx = req.ctx!;
+  const parsed = createCloseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  const fund = await ctx.db.fund.findFirst({ where: { id: req.params.id } });
+  if (!fund) return res.status(404).json({ error: "Fund not found" });
+
+  const close = await ctx.db.fundClose.create({
+    data: {
+      sponsorTenantId: ctx.tenantId,
+      fundId: fund.id,
+      name: parsed.data.name,
+      closeDate: new Date(parsed.data.closeDate),
+      targetAmount: parsed.data.targetAmount,
+    },
+  });
+
+  await audit(ctx.db, ctx.tenantId, {
+    actorType: "advisor_rep",
+    actorId: ctx.advisorRepId,
+    action: "fund.close_created",
+    entityType: "FundClose",
+    entityId: close.id,
+    metadata: { fundId: fund.id, name: close.name, closeDate: close.closeDate },
+  });
+
+  res.status(201).json(close);
+});
+
+const updateCloseSchema = z.object({ status: z.enum(["open", "closed", "cancelled"]) });
+
+fundsRouter.patch("/:id/closes/:closeId", async (req, res) => {
+  const ctx = req.ctx!;
+  const parsed = updateCloseSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  const result = await ctx.db.fundClose.updateMany({
+    where: { id: req.params.closeId, fundId: req.params.id },
+    data: { status: parsed.data.status },
+  });
+  if (result.count === 0) return res.status(404).json({ error: "Close not found" });
+
+  await audit(ctx.db, ctx.tenantId, {
+    actorType: "advisor_rep",
+    actorId: ctx.advisorRepId,
+    action: "fund.close_status_changed",
+    entityType: "FundClose",
+    entityId: req.params.closeId,
+    metadata: { status: parsed.data.status },
+  });
+
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
 // Advisor entitlements — grant/revoke only, no advisor-side browse UI yet
 // ---------------------------------------------------------------------------
 

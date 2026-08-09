@@ -260,6 +260,115 @@ async function main() {
     }
   }
 
+  // --- Fund administrator tenant (Phase 5) ---
+  // Engaged on the first sponsor's funds only, so both paths stay demoable:
+  // subscriptions to those funds route to the administrator for review, and
+  // subscriptions to every other fund fall back to the sponsor.
+  const adminTenant = await prisma.tenant.upsert({
+    where: { slug: "northbridge-fund-services" },
+    update: {},
+    create: {
+      type: "fund_admin",
+      name: "Northbridge Fund Services",
+      slug: "northbridge-fund-services",
+    },
+  });
+
+  await prisma.advisorRep.upsert({
+    where: { email: "ops@northbridge.test" },
+    update: {},
+    create: {
+      tenantId: adminTenant.id,
+      email: "ops@northbridge.test",
+      passwordHash,
+      firstName: "Tomas",
+      lastName: "Berg",
+      role: "fund_admin_ops",
+    },
+  });
+
+  const adminSponsorSlug = SEED_SPONSORS[0].slug;
+  const adminSponsor = await prisma.tenant.findUnique({ where: { slug: adminSponsorSlug } });
+  if (adminSponsor) {
+    await prisma.fund.updateMany({
+      where: { sponsorTenantId: adminSponsor.id },
+      data: { fundAdminTenantId: adminTenant.id },
+    });
+  }
+
+  // --- Fund closes ---
+  // Evergreen/continuous funds get a recurring quarterly cadence; drawdown
+  // funds get a single upcoming close. Fixed dates keep the seed deterministic.
+  const QUARTERLY = [
+    { name: "Q1 2027 Close", date: "2027-03-31" },
+    { name: "Q2 2027 Close", date: "2027-06-30" },
+    { name: "Q3 2027 Close", date: "2027-09-30" },
+    { name: "Q4 2027 Close", date: "2027-12-31" },
+  ];
+  let closeCount = 0;
+  const allFunds = await prisma.fund.findMany();
+  for (const fund of allFunds) {
+    const existing = await prisma.fundClose.count({ where: { fundId: fund.id } });
+    if (existing > 0) continue;
+
+    const windows =
+      fund.structure === "continuous"
+        ? QUARTERLY
+        : [{ name: "Final Close", date: fund.closeDate?.toISOString().slice(0, 10) ?? "2027-12-31" }];
+
+    for (const w of windows) {
+      await prisma.fundClose.create({
+        data: {
+          sponsorTenantId: fund.sponsorTenantId,
+          fundId: fund.id,
+          name: w.name,
+          closeDate: new Date(w.date),
+          status: "open",
+        },
+      });
+      closeCount++;
+    }
+  }
+
+  // --- Signature blocks on every ready template ---
+  // A realistic subscription agreement carries many marks per signer. Seven
+  // here (investor initials on three questionnaire pages, signature, date; GP
+  // signature and date) rather than one, so the execution flow exercises the
+  // multi-block path.
+  const SEED_BLOCKS = [
+    { key: "investorInitialsP2", label: "Investor initials — p.2", type: "initials" as const, role: "investor_signer" as const, page: 2 },
+    { key: "investorInitialsP3", label: "Investor initials — p.3", type: "initials" as const, role: "investor_signer" as const, page: 3 },
+    { key: "investorInitialsP4", label: "Investor initials — p.4", type: "initials" as const, role: "investor_signer" as const, page: 4 },
+    { key: "investorSignature", label: "Investor signature", type: "signature" as const, role: "investor_signer" as const, page: 5 },
+    { key: "investorSignDate", label: "Investor date", type: "date" as const, role: "investor_signer" as const, page: 5 },
+    { key: "gpSignature", label: "General Partner signature", type: "signature" as const, role: "gp_countersigner" as const, page: 5 },
+    { key: "gpSignDate", label: "General Partner date", type: "date" as const, role: "gp_countersigner" as const, page: 5 },
+  ];
+
+  let blockCount = 0;
+  const templates = await prisma.documentTemplate.findMany();
+  for (const template of templates) {
+    const existing = await prisma.signatureBlock.count({ where: { templateId: template.id } });
+    if (existing > 0) continue;
+    await prisma.signatureBlock.createMany({
+      data: SEED_BLOCKS.map((b) => ({
+        sponsorTenantId: template.sponsorTenantId,
+        templateId: template.id,
+        anvilFieldKey: b.key,
+        label: b.label,
+        blockType: b.type,
+        signerRole: b.role,
+        pageNum: b.page,
+      })),
+      skipDuplicates: true,
+    });
+    blockCount += SEED_BLOCKS.length;
+  }
+
+  console.log(`Seeded fund admin: ops@northbridge.test / ${DEV_PASSWORD} — ${adminTenant.name}`);
+  console.log(`  administering ${adminSponsorSlug} funds; other funds fall back to their sponsor`);
+  console.log(`Seeded ${closeCount} fund closes, ${blockCount} signature blocks.`);
+
   console.log(
     `Seeded ${SEED_SPONSORS.length} Open Disclosure sponsors, ${fundCount} funds, ` +
       `${entitlementCount} entitlements to ${advisorTenant.slug}, ${templateCount} templates.`

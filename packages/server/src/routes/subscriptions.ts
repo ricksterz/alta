@@ -5,6 +5,7 @@ import type { SubscriptionStatus } from "@prisma/client";
 import {
   requireAdvisorTenant,
   requireAuth,
+  requireSponsorOrFundAdmin,
   requireSponsorTenant,
 } from "../middleware/requireAuth.js";
 import type { RequestContext } from "../types/express.js";
@@ -13,9 +14,13 @@ import { CANONICAL_FIELDS } from "../canonicalFields.js";
 import {
   activeEntitlement,
   fundsEntitledToAdvisor,
+  nextOpenClose,
   readyTemplateForFund,
 } from "../db/crossTenant.js";
 import { checkEligibility } from "../workflow/eligibility.js";
+import { holderCapacity } from "../workflow/holderRegister.js";
+import { openPositionForSubscription } from "../workflow/positions.js";
+import { fulfillBlocksForSigner } from "../workflow/signatureBlocks.js";
 import { resolveFields } from "../workflow/resolveFields.js";
 import { getDocumentProvider } from "../workflow/documentProvider.js";
 import {
@@ -44,12 +49,20 @@ function investorDisplayName(inv: {
 // setting `status` directly.
 async function transitionTo(
   ctx: RequestContext,
-  subscription: { id: string; status: SubscriptionStatus },
+  subscription: {
+    id: string;
+    status: SubscriptionStatus;
+    fundAdminTenantId?: string | null;
+  },
   to: SubscriptionStatus,
   extraData: Record<string, unknown> = {},
   extraMetadata: Record<string, unknown> = {}
 ) {
-  const rule = assertTransition(subscription.status, to, ctx.tenantType);
+  const rule = assertTransition(
+    { status: subscription.status, fundAdminTenantId: subscription.fundAdminTenantId },
+    to,
+    ctx.tenantType
+  );
   const stamp = STATUS_TIMESTAMP[to];
 
   await ctx.db.subscription.updateMany({
@@ -127,6 +140,7 @@ subscriptionsRouter.get("/eligibility", requireAdvisorTenant, async (req, res) =
         qualifiedPurchaserBasis: investor.qualifiedPurchaserBasis,
       },
       fund: { exclusion: entitlement.fund.exclusion, name: entitlement.fund.name },
+      holderCapacity: await holderCapacity(entitlement.fund.id),
     })
   );
 });
@@ -176,7 +190,10 @@ subscriptionsRouter.get("/:id", async (req, res) => {
       fund: true,
       tenant: { select: { id: true, name: true } },
       documents: { orderBy: { generatedAt: "desc" } },
-      signatures: { orderBy: { sequence: "asc" } },
+      signatures: {
+        orderBy: { sequence: "asc" },
+        include: { _count: { select: { fulfillments: true } } },
+      },
     },
   });
   if (!subscription) {
@@ -185,6 +202,10 @@ subscriptionsRouter.get("/:id", async (req, res) => {
 
   res.json({
     ...subscription,
+    signatures: subscription.signatures.map((s) => ({
+      ...s,
+      blocksExecuted: s._count.fulfillments,
+    })),
     investorDisplayName: investorDisplayName(subscription.investor),
     advisorFirm: subscription.tenant.name,
     allowedNext: allowedNext(subscription.status),
@@ -236,6 +257,7 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
       qualifiedPurchaserBasis: investor.qualifiedPurchaserBasis,
     },
     fund: { exclusion: fund.exclusion, name: fund.name },
+    holderCapacity: await holderCapacity(fund.id),
   });
   if (!eligibility.eligible) {
     await audit(ctx.db, ctx.tenantId, {
@@ -265,12 +287,18 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
     });
   }
 
+  // Target the next open close. Drawdown funds typically have a few; evergreen
+  // funds have a recurring cadence, which is the case this exists for.
+  const nextClose = await nextOpenClose(fund.id);
+
   const subscription = await ctx.db.subscription.create({
     data: {
       tenantId: ctx.tenantId,
       sponsorTenantId: fund.sponsorTenantId,
+      fundAdminTenantId: fund.fundAdminTenantId,
       investorId: investor.id,
       fundId: fund.id,
+      fundCloseId: nextClose?.id ?? null,
       amount: parsed.data.amount,
       status: "draft",
       createdByRepId: ctx.advisorRepId,
@@ -485,16 +513,33 @@ subscriptionsRouter.post("/:id/signatures/:sigId/sign", async (req, res) => {
     return res.status(400).json({ error: "An earlier signer has not signed yet" });
   }
 
+  const signedAt = new Date();
   await ctx.db.signatureRequest.updateMany({
     where: { id: signature.id },
     data: {
       status: "signed",
-      signedAt: new Date(),
+      signedAt,
       typedName: parsed.data.typedName,
       ipAddress: req.ip ?? null,
       userAgent: req.headers["user-agent"] ?? null,
       ...(signature.role === "gp_countersigner" ? { advisorRepId: ctx.advisorRepId } : {}),
     },
+  });
+
+  // Execute every block on the template assigned to this signer's role. A
+  // 90-page subscription agreement carries many marks per signer — initials on
+  // each questionnaire page, a signature on the execution page, a date beside
+  // it — and recording only "signed" would lose which marks are actually
+  // present on the document.
+  const fulfilled = await fulfillBlocksForSigner({
+    db: ctx.db,
+    tenantId: ctx.tenantId,
+    sponsorTenantId: subscription.sponsorTenantId,
+    signatureRequestId: signature.id,
+    documentId: signature.documentId,
+    role: signature.role,
+    typedName: parsed.data.typedName,
+    signedAt,
   });
 
   await audit(ctx.db, ctx.tenantId, {
@@ -509,6 +554,8 @@ subscriptionsRouter.post("/:id/signatures/:sigId/sign", async (req, res) => {
       signerName: signature.signerName,
       typedName: parsed.data.typedName,
       ipAddress: req.ip ?? null,
+      blocksExecuted: fulfilled.length,
+      blockKeys: fulfilled.map((f) => f.anvilFieldKey),
     },
   });
 
@@ -534,7 +581,7 @@ const transitionSchema = z.object({
   rejectionReason: z.string().optional(),
 });
 
-subscriptionsRouter.post("/:id/transition", requireSponsorTenant, async (req, res) => {
+subscriptionsRouter.post("/:id/transition", requireSponsorOrFundAdmin, async (req, res) => {
   const ctx = req.ctx!;
   const parsed = transitionSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -552,6 +599,13 @@ subscriptionsRouter.post("/:id/transition", requireSponsorTenant, async (req, re
   const extra =
     parsed.data.to === "rejected" ? { rejectionReason: parsed.data.rejectionReason } : {};
   await transitionTo(ctx, subscription, parsed.data.to, extra, extra);
+
+  // Funding is where a position begins. Created here rather than on acceptance
+  // because an accepted-but-unfunded subscription is a commitment, not a
+  // holding — and the holder register must count holders, not intentions.
+  if (parsed.data.to === "funded") {
+    await openPositionForSubscription(subscription.id);
+  }
 
   res.status(204).end();
 });

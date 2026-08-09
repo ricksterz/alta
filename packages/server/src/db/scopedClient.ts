@@ -26,17 +26,25 @@ import { prisma } from "./client.js";
 //     FieldMapping, FundAdvisorEntitlement. A deliberately different column
 //     name so code can't accidentally apply an advisor tenant's filter to
 //     sponsor-owned data or vice versa.
-//  3. Dual-owned: carries BOTH columns, and which one applies depends on who
-//     is asking. A Subscription belongs to the advisor tenant that created it
-//     AND to the sponsor tenant whose fund it subscribes to — both must see
-//     it, neither may see the other's unrelated subscriptions. This is the
-//     only shape that needs the caller's tenant TYPE, not just their id,
-//     which is why scopedClient takes both.
+//  3. Multi-owned: carries SEVERAL owning columns, and which one applies
+//     depends on who is asking. A Subscription belongs to the advisor tenant
+//     that created it, the sponsor tenant whose fund it subscribes to, and —
+//     when one is engaged — the fund administrator reviewing it. All three
+//     must see it; none may see the others' unrelated subscriptions. This is
+//     the shape that needs the caller's tenant TYPE, not just their id, which
+//     is why scopedClient takes both.
 //
-// The dual case is the one worth being careful about: getting it wrong in the
-// permissive direction leaks one advisor firm's book of business to another,
-// so the mapping below is explicit per model rather than inferred from which
-// columns happen to exist.
+// The multi-owned case is the one worth being careful about: getting it wrong
+// in the permissive direction leaks one advisor firm's book of business to
+// another, so the mapping below is explicit per model rather than inferred
+// from which columns happen to exist.
+//
+// Note the fund_admin asymmetry. Subscription.fundAdminTenantId is NULLABLE —
+// most funds have no admin on-platform — so a fund_admin caller filtering on
+// it correctly sees only the subscriptions actually routed to them. Models
+// with no fund-admin column at all (Position, TransferRequest) are simply not
+// visible to fund_admin tenants, which is the intended behaviour: an
+// administrator reviews subscriptions, it does not hold the register.
 
 const TENANT_EXEMPT_MODELS = new Set(["Tenant"]);
 
@@ -45,17 +53,55 @@ const SPONSOR_OWNED_MODELS = new Set([
   "FundAdvisorEntitlement",
   "DocumentTemplate",
   "FieldMapping",
+  "SignatureBlock",
+  "FundClose",
 ]);
 
-const DUAL_OWNED_MODELS = new Set([
-  "Subscription",
-  "SubscriptionDocument",
-  "SignatureRequest",
-]);
+// Per-model column to filter on, by caller tenant type. A model absent from a
+// given tenant type's mapping is invisible to that tenant type.
+const MULTI_OWNED_MODELS: Record<string, Partial<Record<TenantType, string>>> = {
+  Subscription: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+    fund_admin: "fundAdminTenantId",
+  },
+  SubscriptionDocument: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+  },
+  SignatureRequest: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+  },
+  SignatureBlockFulfillment: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+  },
+  Position: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+  },
+  TransferRequest: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+  },
+};
+
+/** Thrown when a tenant type queries a model it has no ownership column on. */
+export class ModelNotVisibleError extends Error {}
 
 function tenantColumnFor(model: string, tenantType: TenantType): string {
-  if (DUAL_OWNED_MODELS.has(model)) {
-    return tenantType === "sponsor_firm" ? "sponsorTenantId" : "tenantId";
+  const multi = MULTI_OWNED_MODELS[model];
+  if (multi) {
+    const column = multi[tenantType];
+    if (!column) {
+      throw new ModelNotVisibleError(
+        `${model} is not visible to a ${tenantType} tenant: it has no ownership ` +
+          `column for that tenant type. This is a deliberate boundary, not a bug — ` +
+          `if this access is intended, add the column and map it here.`
+      );
+    }
+    return column;
   }
   if (SPONSOR_OWNED_MODELS.has(model)) {
     return "sponsorTenantId";

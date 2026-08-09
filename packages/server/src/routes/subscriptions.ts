@@ -19,6 +19,7 @@ import {
 } from "../db/crossTenant.js";
 import { checkEligibility } from "../workflow/eligibility.js";
 import { holderCapacity } from "../workflow/holderRegister.js";
+import { decryptOptional } from "../crypto/fieldEncryption.js";
 import { openPositionForSubscription } from "../workflow/positions.js";
 import { fulfillBlocksForSigner } from "../workflow/signatureBlocks.js";
 import { resolveFields } from "../workflow/resolveFields.js";
@@ -337,6 +338,20 @@ subscriptionsRouter.post("/:id/generate-document", requireAdvisorTenant, async (
     return res.status(400).json({ error: "This fund has no ready document template" });
   }
 
+  // The one place a raw taxpayer identifier is legitimately needed: filling it
+  // onto the document the investor signs. Decrypted here, used immediately,
+  // never returned to a client.
+  const investorForFill = {
+    ...subscription.investor,
+    taxProfile: subscription.investor.taxProfile
+      ? {
+          ...subscription.investor.taxProfile,
+          w9TaxpayerId: decryptOptional(subscription.investor.taxProfile.w9TaxpayerId),
+          w8ForeignTaxId: decryptOptional(subscription.investor.taxProfile.w8ForeignTaxId),
+        }
+      : null,
+  };
+
   const resolution = resolveFields(
     template.fieldMappings.map((m) => ({
       anvilFieldKey: m.anvilFieldKey,
@@ -344,7 +359,7 @@ subscriptionsRouter.post("/:id/generate-document", requireAdvisorTenant, async (
       canonicalField: m.canonicalField,
       staticValue: m.staticValue,
     })),
-    { investor: subscription.investor, subscription, fund: subscription.fund }
+    { investor: investorForFill, subscription, fund: subscription.fund }
   );
 
   const fieldLabels: Record<string, string> = {};

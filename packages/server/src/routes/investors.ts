@@ -8,6 +8,7 @@ import {
   TaxFormType,
 } from "@prisma/client";
 import { qpBasesForInvestorType } from "../workflow/eligibility.js";
+import { encryptOptional, maskTaxId } from "../crypto/fieldEncryption.js";
 import { requireAdvisorTenant, requireAuth } from "../middleware/requireAuth.js";
 import { audit } from "../audit.js";
 import { upload } from "../upload.js";
@@ -65,7 +66,20 @@ investorsRouter.get("/:id", async (req, res) => {
   if (!investor) {
     return res.status(404).json({ error: "Investor not found" });
   }
-  res.json(investor);
+
+  // A taxpayer identifier never leaves the server. A rep confirming they
+  // entered the right number needs the last four; the browser is the easiest
+  // place for the whole thing to end up somewhere it shouldn't.
+  res.json({
+    ...investor,
+    taxProfile: investor.taxProfile
+      ? {
+          ...investor.taxProfile,
+          w9TaxpayerId: maskTaxId(investor.taxProfile.w9TaxpayerId),
+          w8ForeignTaxId: maskTaxId(investor.taxProfile.w8ForeignTaxId),
+        }
+      : null,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -292,7 +306,14 @@ investorsRouter.patch("/:id/tax-profile", async (req, res) => {
     where: { investorId: investor.id },
   });
 
-  const data = { ...parsed.data, certifiedAt: new Date() };
+  // Encrypt the raw identifiers before they touch the database. Everything
+  // else on the tax profile is ordinary profile data.
+  const data = {
+    ...parsed.data,
+    w9TaxpayerId: encryptOptional(parsed.data.w9TaxpayerId),
+    w8ForeignTaxId: encryptOptional(parsed.data.w8ForeignTaxId),
+    certifiedAt: new Date(),
+  };
   if (existing) {
     await ctx.db.investorTaxProfile.updateMany({
       where: { investorId: investor.id },

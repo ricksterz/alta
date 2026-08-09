@@ -15,6 +15,7 @@ import { NewSubscriptionPage } from "./pages/subscriptions/NewSubscriptionPage";
 import { SubscriptionDetailPage } from "./pages/subscriptions/SubscriptionDetailPage";
 import { SubscriptionsQueuePage } from "./pages/subscriptions/SubscriptionsQueuePage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { AuditPage } from "./pages/AuditPage";
 
 export function App() {
   return (
@@ -39,6 +40,7 @@ export function App() {
             <Route path="/subscriptions/:id" element={<SubscriptionDetailPage />} />
 
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/audit" element={<AuditPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -48,6 +48,9 @@ export function Layout() {
                     Register
                   </Link>
                 )}
+                <Link to="/audit" className="hover:text-slate-900">
+                  Audit
+                </Link>
               </nav>
             )}
           </div>

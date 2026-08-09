@@ -398,6 +398,7 @@ model Fund {
   subscriptions       Subscription[]
   closes              FundClose[]
   positions           Position[]
+  capitalCalls        CapitalCall[]
 
   @@index([sponsorTenantId])
   @@index([fundAdminTenantId])
@@ -842,7 +843,8 @@ model Position {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  transfersOut TransferRequest[] @relation("TransferFromPosition")
+  transfersOut    TransferRequest[]       @relation("TransferFromPosition")
+  callAllocations CapitalCallAllocation[]
 
   @@unique([tenantId, subscriptionId])
   @@index([tenantId])
@@ -899,4 +901,80 @@ model TransferRequest {
   @@index([sponsorTenantId])
   @@index([positionId])
   @@map("transfer_requests")
+}
+
+// ---------------------------------------------------------------------------
+// Capital calls
+// ---------------------------------------------------------------------------
+
+enum CapitalCallStatus {
+  draft
+  issued
+  settled
+  cancelled
+}
+
+enum CallAllocationStatus {
+  outstanding
+  paid
+  defaulted
+}
+
+// A drawdown fund does not take the whole commitment up front — it calls
+// capital over the fund's life. Until now Position recorded a funded
+// subscription as fully funded, which is true for a continuous vehicle and
+// wrong for every drawdown fund on the platform.
+//
+// A call is issued fund-wide, then allocated per position. Allocation is
+// pro-rata by commitment, computed and stored at issue time rather than
+// derived on read: a call is a fixed obligation once notices go out, and
+// recomputing it later against a changed register would silently restate what
+// investors were told they owed.
+model CapitalCall {
+  id                  String            @id @default(uuid())
+  sponsorTenantId     String
+  fundId              String
+  fund                Fund              @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  callNumber          Int // 1, 2, 3… within the fund
+  name                String
+  /// Fraction of each position's commitment being called, e.g. 0.15 for 15%.
+  percentOfCommitment Decimal           @db.Decimal(9, 6)
+  totalCalled         Decimal           @db.Decimal(18, 2)
+  noticeDate          DateTime
+  dueDate             DateTime
+  status              CapitalCallStatus @default(draft)
+  purpose             String?
+  issuedAt            DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  allocations CapitalCallAllocation[]
+
+  @@unique([fundId, callNumber])
+  @@index([sponsorTenantId])
+  @@index([fundId])
+  @@map("capital_calls")
+}
+
+// One holder's share of one call. Dual-owned like Subscription: the advisor
+// firm must see what its client owes, the sponsor must see what it is owed.
+model CapitalCallAllocation {
+  id              String               @id @default(uuid())
+  tenantId        String
+  sponsorTenantId String
+  capitalCallId   String
+  capitalCall     CapitalCall          @relation(fields: [capitalCallId], references: [id], onDelete: Cascade)
+  positionId      String
+  position        Position             @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  amountDue       Decimal              @db.Decimal(18, 2)
+  amountPaid      Decimal              @default(0) @db.Decimal(18, 2)
+  status          CallAllocationStatus @default(outstanding)
+  paidAt          DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([capitalCallId, positionId])
+  @@index([tenantId])
+  @@index([sponsorTenantId])
+  @@map("capital_call_allocations")
 }

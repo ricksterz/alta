@@ -55,6 +55,7 @@ const SPONSOR_OWNED_MODELS = new Set([
   "FieldMapping",
   "SignatureBlock",
   "FundClose",
+  "CapitalCall",
 ]);
 
 // Per-model column to filter on, by caller tenant type. A model absent from a
@@ -82,6 +83,13 @@ const MULTI_OWNED_MODELS: Record<string, Partial<Record<TenantType, string>>> = 
     sponsor_firm: "sponsorTenantId",
   },
   TransferRequest: {
+    advisor_firm: "tenantId",
+    sponsor_firm: "sponsorTenantId",
+  },
+  // An advisor firm must see what its clients owe; the sponsor must see what
+  // it is owed. A fund administrator has no column here — capital call
+  // administration is a separate engagement from subscription review.
+  CapitalCallAllocation: {
     advisor_firm: "tenantId",
     sponsor_firm: "sponsorTenantId",
   },

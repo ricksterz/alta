@@ -15,6 +15,7 @@ export async function openPositionForSubscription(subscriptionId: string) {
 
   const subscription = await prisma.subscription.findUnique({
     where: { id: subscriptionId },
+    include: { fund: { select: { structure: true } } },
   });
   if (!subscription) return null;
 
@@ -26,10 +27,12 @@ export async function openPositionForSubscription(subscriptionId: string) {
       fundId: subscription.fundId,
       subscriptionId: subscription.id,
       commitmentAmount: subscription.amount ?? 0,
-      // Drawdown funds call capital over time, so funded ≠ committed in
-      // general. Alta has no capital-call model yet, so a funded subscription
-      // is recorded as fully funded — revisit when capital calls land.
-      fundedAmount: subscription.amount ?? 0,
+      // A continuous vehicle takes the full subscription at its close, so
+      // committed and funded coincide. A drawdown fund calls capital over the
+      // fund's life, so a new position starts at zero funded and rises as
+      // calls are paid — see routes/capitalCalls.ts.
+      fundedAmount:
+        subscription.fund.structure === "continuous" ? (subscription.amount ?? 0) : 0,
       status: "active",
       tokenization: "none",
     },

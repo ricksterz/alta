@@ -23,26 +23,6 @@ fundTemplatesRouter.use(requireAuth, requireSponsorTenant);
 export const templatesRouter = Router();
 templatesRouter.use(requireAuth, requireSponsorTenant);
 
-// Best-effort extraction of {key, label} pairs from Anvil's `fieldInfo`.
-// The exact shape isn't confirmed (see anvilClient.ts) — this tries the
-// couple of shapes that would be reasonable for a GraphQL field named
-// `fieldInfo` returning "detected field information", and falls back to an
-// empty list (raw JSON still gets stored either way) rather than guessing
-// wrong and silently creating garbage FieldMapping rows.
-function extractDetectedFields(raw: unknown): { key: string; label?: string }[] {
-  const candidates = Array.isArray(raw)
-    ? raw
-    : raw && typeof raw === "object" && Array.isArray((raw as any).fields)
-      ? (raw as any).fields
-      : null;
-
-  if (!candidates) return [];
-
-  return candidates
-    .filter((f: unknown) => f && typeof f === "object" && "id" in (f as object))
-    .map((f: any) => ({ key: String(f.id), label: f.name ? String(f.name) : undefined }));
-}
-
 // ---------------------------------------------------------------------------
 // POST /funds/:fundId/templates — upload PDF, call Anvil, seed unmapped fields
 // ---------------------------------------------------------------------------
@@ -59,6 +39,8 @@ fundTemplatesRouter.post(
       return res.status(400).json({ error: "No file uploaded" });
     }
 
+    // Document AI stays off: it is a paid add-on, and a subscription
+    // agreement produced by counsel is normally already a fillable form.
     const detected = await AnvilClient.uploadAndDetectFields({
       buffer: req.file.buffer,
       filename: req.file.originalname,
@@ -77,14 +59,16 @@ fundTemplatesRouter.post(
       },
     });
 
-    const fields = extractDetectedFields(detected.detectedFieldsRaw);
+    const fields = detected.fields;
     if (fields.length > 0) {
       await ctx.db.fieldMapping.createMany({
+        // anvilFieldKey is the field's id, which is what Anvil's fill payload
+        // keys on — confirmed against Cast.exampleData rather than assumed.
         data: fields.map((f) => ({
           sponsorTenantId: ctx.tenantId,
           templateId: template.id,
-          anvilFieldKey: f.key,
-          anvilFieldLabel: f.label,
+          anvilFieldKey: f.id,
+          anvilFieldLabel: f.name,
         })),
       });
     }

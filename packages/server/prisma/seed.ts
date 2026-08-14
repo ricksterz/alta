@@ -369,6 +369,90 @@ async function main() {
   console.log(`  administering ${adminSponsorSlug} funds; other funds fall back to their sponsor`);
   console.log(`Seeded ${closeCount} fund closes, ${blockCount} signature blocks.`);
 
+  // --- Fund counsel tenant (Phase 8) ---
+  // Engaged on a DIFFERENT sponsor's funds than the fund administrator above,
+  // so the two review paths stay independently demoable rather than always
+  // co-occurring on the same fund.
+  const legalTenant = await prisma.tenant.upsert({
+    where: { slug: "sterling-cross-llp" },
+    update: {},
+    create: {
+      type: "fund_legal",
+      name: "Sterling & Cross LLP",
+      slug: "sterling-cross-llp",
+    },
+  });
+
+  const legalRep = await prisma.advisorRep.upsert({
+    where: { email: "counsel@sterlingcross.test" },
+    update: {},
+    create: {
+      tenantId: legalTenant.id,
+      email: "counsel@sterlingcross.test",
+      passwordHash,
+      firstName: "Renata",
+      lastName: "Okafor",
+      role: "legal_ops",
+    },
+  });
+
+  const legalSponsorSlug = SEED_SPONSORS[1]?.slug;
+  const legalSponsor = legalSponsorSlug
+    ? await prisma.tenant.findUnique({ where: { slug: legalSponsorSlug } })
+    : null;
+  if (legalSponsor) {
+    await prisma.fund.updateMany({
+      where: { sponsorTenantId: legalSponsor.id },
+      data: { fundLegalTenantId: legalTenant.id },
+    });
+
+    // Put one already-mapped template into pending_legal_review so the queue
+    // has something in it from a fresh seed, rather than being empty until
+    // someone manually submits one. Every seeded template is fully mapped
+    // (see SEED_TEMPLATE_FIELDS above), so this is a legitimate state, not a
+    // shortcut past the unmapped-field guard.
+    const legalFund = await prisma.fund.findFirst({ where: { sponsorTenantId: legalSponsor.id } });
+    if (legalFund) {
+      await prisma.documentTemplate.updateMany({
+        where: { fundId: legalFund.id, status: "ready" },
+        data: { status: "pending_legal_review" },
+      });
+    }
+  }
+
+  console.log(`Seeded fund counsel: ${legalRep.email} / ${DEV_PASSWORD} — ${legalTenant.name}`);
+  console.log(`  engaged on ${legalSponsorSlug ?? "(no sponsor available)"} funds`);
+
+  // --- Custodian tenant (Phase 8) ---
+  // Not pre-attached to any subscription: an advisor attaches one per
+  // subscription from the subscription detail page, which is the flow worth
+  // demoing rather than a fixture that skips it.
+  const custodianTenant = await prisma.tenant.upsert({
+    where: { slug: "meridian-trust-custody" },
+    update: {},
+    create: {
+      type: "custodian",
+      name: "Meridian Trust & Custody",
+      slug: "meridian-trust-custody",
+    },
+  });
+
+  const custodianRep = await prisma.advisorRep.upsert({
+    where: { email: "ops@meridiantrust.test" },
+    update: {},
+    create: {
+      tenantId: custodianTenant.id,
+      email: "ops@meridiantrust.test",
+      passwordHash,
+      firstName: "Daniel",
+      lastName: "Kwan",
+      role: "custodian_ops",
+    },
+  });
+
+  console.log(`Seeded custodian: ${custodianRep.email} / ${DEV_PASSWORD} — ${custodianTenant.name}`);
+  console.log("  attach it to a subscription from that subscription's detail page to demo funding confirmation");
+
   console.log(
     `Seeded ${SEED_SPONSORS.length} Open Disclosure sponsors, ${fundCount} funds, ` +
       `${entitlementCount} entitlements to ${advisorTenant.slug}, ${templateCount} templates.`

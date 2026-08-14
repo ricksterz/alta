@@ -61,6 +61,30 @@ export function requireFundAdminTenant(req: Request, res: Response, next: NextFu
   next();
 }
 
+export function requireFundLegalTenant(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "fund_legal") {
+    return res.status(403).json({ error: "Fund counsel tenant required" });
+  }
+  next();
+}
+
+export function requireCustodianTenant(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "custodian") {
+    return res.status(403).json({ error: "Custodian tenant required" });
+  }
+  next();
+}
+
+// A template's detail view is read by the sponsor who owns it and by the
+// counsel reviewing it; scopedClient's own DocumentTemplate scope already
+// keeps each to their own funds, so this only needs to gate tenant *type*.
+export function requireSponsorOrFundLegal(req: Request, res: Response, next: NextFunction) {
+  if (req.ctx?.tenantType !== "sponsor_firm" && req.ctx?.tenantType !== "fund_legal") {
+    return res.status(403).json({ error: "Sponsor or fund counsel tenant required" });
+  }
+  next();
+}
+
 // Fund-admin review is performed by the administrator when one is engaged and
 // by the sponsor otherwise, so routes covering that step accept either and
 // defer the actual decision to the state machine, which knows whether the

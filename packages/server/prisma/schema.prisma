@@ -42,6 +42,8 @@ enum TenantType {
   advisor_firm
   sponsor_firm
   fund_admin // fund administrator (Gen II, Citco, Alter Domus, …)
+  fund_legal // outside counsel — drafts/blesses subscription docs
+  custodian // holds the LP's assets; confirms funding (Schwab, Fidelity, Millennium Trust, …)
 }
 
 model Tenant {
@@ -66,8 +68,15 @@ model Tenant {
   sponsoredSubscriptions Subscription[]           @relation("SubscriptionSponsor")
 
   // Phase 5 — fund_admin side
-  administeredFunds         Fund[]         @relation("FundAdministrator")
-  administeredSubscriptions Subscription[] @relation("SubscriptionFundAdmin")
+  administeredFunds Fund[] @relation("FundAdministrator")
+
+  // Phase 8 — fund_legal side
+  counselFunds Fund[] @relation("FundLegal")
+
+  // Phase 8 — participant on a Subscription: fund_admin OR custodian, whichever
+  // this tenant is. Replaces the old fundAdminTenantId column — see
+  // SubscriptionParticipant below for why.
+  subscriptionParticipation SubscriptionParticipant[]
 
   // Phase 6 — positions & transfers
   advisorPositions Position[]        @relation("PositionAdvisor")
@@ -85,6 +94,8 @@ enum AdvisorRole {
   advisor_admin
   gp_ops
   fund_admin_ops
+  legal_ops
+  custodian_ops
 }
 
 model AdvisorRep {
@@ -104,6 +115,7 @@ model AdvisorRep {
   investorsCreated     Investor[]              @relation("InvestorCreatedBy")
   subscriptionsCreated Subscription[]          @relation("SubscriptionCreatedBy")
   evidenceUploaded     AccreditationEvidence[]
+  accessLinksCreated   InvestorAccessLink[]
 
   // Phase 2 — gp_ops side
   entitlementsGranted FundAdvisorEntitlement[]
@@ -224,6 +236,20 @@ model Investor {
   qualifiedPurchaserBasis QualifiedPurchaserBasis?
   qpAttestedAt            DateTime?
 
+  // --- Eligibility beyond accreditation/QP — see eligibility.ts and
+  // Fund.erisaEligible/iraEligible/nonUsInvestorsPermitted/taxExemptEligible.
+  // Default false rather than null: these are yes/no facts about the
+  // investor (is it a plan, is it exempt), not an attestation that can be
+  // "not yet established" the way accreditation is.
+  isErisaPlan         Boolean @default(false)
+  isIraAccount        Boolean @default(false)
+  isTaxExempt         Boolean @default(false)
+  // Tax residency, deliberately separate from the mailing `country` above —
+  // an investor can have a US mailing address and foreign tax residency (or
+  // vice versa), which is exactly the W-9/W-8BEN distinction taxProfile
+  // already tracks. Null means not yet captured, not "US".
+  taxResidencyCountry String?
+
   createdByRepId String
   createdByRep   AdvisorRep @relation("InvestorCreatedBy", fields: [createdByRepId], references: [id])
   createdAt      DateTime   @default(now())
@@ -235,6 +261,7 @@ model Investor {
   subscriptions     Subscription[]
   positions         Position[]
   transfersReceived TransferRequest[]       @relation("TransferToInvestor")
+  accessLinks       InvestorAccessLink[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -332,6 +359,31 @@ model AccreditationEvidence {
   @@map("accreditation_evidence")
 }
 
+// A revocable, expiring bearer link an advisor hands an LP to view their own
+// standing — no login system, on the same reasoning as Session (a hash is
+// stored, never the token itself) but deliberately NOT a Session: an LP is
+// not an AdvisorRep and this grants read-only access to exactly one
+// investor's own data, nothing else on the platform. tenantId is the
+// advisor tenant that owns the investor, carried denormalized so this fits
+// the ordinary advisor-owned scoping shape rather than needing a new one.
+model InvestorAccessLink {
+  id             String     @id @default(uuid())
+  tenantId       String
+  investorId     String
+  investor       Investor   @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  tokenHash      String     @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+  createdByRepId String
+  createdByRep   AdvisorRep @relation(fields: [createdByRepId], references: [id])
+  createdAt      DateTime   @default(now())
+
+  @@index([tenantId])
+  @@index([investorId])
+  @@map("investor_access_links")
+}
+
 // ---------------------------------------------------------------------------
 // Fund, entitlements & document templates (Phase 2 — sponsor/GP side)
 // ---------------------------------------------------------------------------
@@ -365,6 +417,29 @@ enum FundExclusion {
   section_3c7 // qualified purchasers only; no holder cap (subject to 12(g))
 }
 
+// Coarse enough to be a real filter across a fund list; not a full taxonomy.
+enum FundAssetClass {
+  private_equity
+  venture_capital
+  private_credit
+  real_estate
+  infrastructure
+  hedge_fund
+  fund_of_funds
+}
+
+enum FundStrategyType {
+  buyout
+  growth_equity
+  venture
+  credit
+  real_estate
+  infrastructure
+  secondaries
+  fund_of_funds
+  other
+}
+
 model Fund {
   id              String          @id @default(uuid())
   sponsorTenantId String
@@ -393,16 +468,151 @@ model Fund {
   fundAdminTenantId String?
   fundAdminTenant   Tenant? @relation("FundAdministrator", fields: [fundAdminTenantId], references: [id])
 
+  // Outside counsel, when engaged on-platform. Nullable for the same reason as
+  // fundAdminTenantId: not every fund has its law firm on Alta, in which case
+  // the sponsor blesses its own templates. See workflow/templateStatus.ts.
+  fundLegalTenantId String?
+  fundLegalTenant   Tenant? @relation("FundLegal", fields: [fundLegalTenantId], references: [id])
+
+  // --- Legal identity, distinct from Sponsor (the platform tenant/brand) ---
+  // A management company (Sponsor) often manages many funds, each with its own
+  // GP entity and its own issuing entity. These are almost never separate
+  // platform users — the Sponsor org acts in both capacities — so they are
+  // fields here rather than tenant types. gpSignatoryName (existing) is the
+  // PERSON who signs; gpEntityName is the LEGAL ENTITY they sign for.
+  gpEntityName       String?
+  // The entity actually issuing the security. This is what a token's issuer
+  // metadata should read from — not Sponsor.name, which is the brand.
+  issuerLegalName    String?
+  issuerEin          String?
+  issuerJurisdiction String?
+
+  // --- Identity & offering ---
+  // Free enough for filtering an advisor's fund list and for a benchmark
+  // export later, without pretending to be a full fund-database taxonomy —
+  // see the Tier 1/2/3 scoping discussion this batch of fields came from.
+  vintageYear  Int?
+  fundFamily   String? // e.g. "Ares Capital Europe" — groups numbered funds in a program
+  fundNumber   String? // e.g. "III", "VI (E) II" — as the sponsor names it, not parsed
+  assetClass   FundAssetClass?
+  strategy     FundStrategyType?
+  baseCurrency String            @default("USD") // ISO 4217; first currency-aware field in the schema
+  lei          String? // Legal Entity Identifier, if the fund has one
+  targetSize   Decimal?          @db.Decimal(18, 2)
+  hardCap      Decimal?          @db.Decimal(18, 2)
+
+  // --- Investor eligibility, beyond accreditation/QP (eligibility.ts) ---
+  // All default to permitted: most funds don't restrict these, and a new
+  // column defaulting to "blocks everyone" would silently break every
+  // existing fund's subscriptions the moment this migration lands.
+  erisaEligible           Boolean @default(true)
+  iraEligible             Boolean @default(true)
+  nonUsInvestorsPermitted Boolean @default(true)
+  taxExemptEligible       Boolean @default(true)
+
+  // --- Transfer terms (workflow/transferCompliance.ts) ---
+  // transferrable is a hard compliance gate, checked in the oracle itself.
+  // gpConsentRequired governs routing only (positions.ts): required is the
+  // safe default since nearly every LPA requires it. rofrApplies and
+  // lockupMonths are recorded and surfaced but not yet enforced — enforcing
+  // lockupMonths needs entry-date tracking on Position this batch doesn't add.
+  transferrable     Boolean @default(true)
+  gpConsentRequired Boolean @default(true)
+  rofrApplies       Boolean @default(false)
+  lockupMonths      Int?
+
   advisorEntitlements FundAdvisorEntitlement[]
   documentTemplates   DocumentTemplate[]
   subscriptions       Subscription[]
   closes              FundClose[]
   positions           Position[]
   capitalCalls        CapitalCall[]
+  terms               FundTerms?
+  shareClasses        ShareClass[]
 
   @@index([sponsorTenantId])
   @@index([fundAdminTenantId])
   @@map("funds")
+}
+
+enum ManagementFeeBasis {
+  commitments
+  invested_capital
+  nav
+}
+
+enum WaterfallType {
+  european
+  american
+  hybrid
+}
+
+// The economics that actually print on a subscription document and that an
+// LP asks about before signing — fee, carry, hurdle, term. Split out from
+// Fund as 1:1 rather than inline: it's a distinct concern (what the deal
+// costs, not what the fund is), and every field here is optional because a
+// GP may set these well after the fund itself is created in Alta.
+model FundTerms {
+  id              String @id @default(uuid())
+  fundId          String @unique
+  fund            Fund   @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  sponsorTenantId String // denormalized, same reasoning as DocumentTemplate.sponsorTenantId
+
+  managementFeeRate     Decimal?            @db.Decimal(6, 4) // 0.0200 = 2.00%
+  managementFeeBasis    ManagementFeeBasis?
+  carriedInterestRate   Decimal?            @db.Decimal(6, 4)
+  hurdleRate            Decimal?            @db.Decimal(6, 4)
+  catchUpRate           Decimal?            @db.Decimal(6, 4)
+  waterfallType         WaterfallType?
+  gpCommitmentPct       Decimal?            @db.Decimal(6, 4)
+  fundTermYears         Int?
+  extensionYears        Int?
+  investmentPeriodEndDate DateTime?
+  recyclingPermitted    Boolean?
+  clawbackProvision     Boolean?
+
+  // Provenance — only meaningful for facts that arrive from outside Alta
+  // (nothing here is computed from Alta's own transaction data, unlike e.g.
+  // an audit event). See the Tier 1 scoping note: this is the minimal
+  // lineage that lets a GP or LP know where a number came from and how
+  // stale it might be, not the full field-level lineage a benchmark
+  // database would need.
+  sourceDocument String? // e.g. "LPA v3, executed 2024-01-15"
+  asOfDate       DateTime?
+  isEstimate     Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sponsorTenantId])
+  @@map("fund_terms")
+}
+
+// A fund offering more than one class of interest (differing fee, currency,
+// or minimum) — Class A/I/Founder being the common real-world case. Nullable
+// on Subscription rather than mandatory: a single-class fund needs none of
+// this, and retrofitting every existing subscription with a class would be
+// pure busywork for funds that never had one.
+model ShareClass {
+  id                   String   @id @default(uuid())
+  fundId               String
+  fund                 Fund     @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  sponsorTenantId      String
+  name                 String // "Class A", "Class I", "Founder"
+  currency             String   @default("USD")
+  minInvestment        Decimal? @db.Decimal(18, 2)
+  managementFeeRate    Decimal? @db.Decimal(6, 4) // overrides FundTerms.managementFeeRate when set
+  carriedInterestRate  Decimal? @db.Decimal(6, 4)
+  closedToNewInvestors Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@unique([fundId, name])
+  @@index([sponsorTenantId])
+  @@index([fundId])
+  @@map("share_classes")
 }
 
 enum FundCloseStatus {
@@ -466,9 +676,14 @@ model FundAdvisorEntitlement {
   @@map("fund_advisor_entitlements")
 }
 
+// pending_legal_review and rejected only come into play when the fund has
+// counsel engaged (Fund.fundLegalTenantId set) — see workflow/templateStatus.ts.
+// Without counsel, processing goes straight to ready on the sponsor's own say.
 enum DocumentTemplateStatus {
   processing
+  pending_legal_review
   ready
+  rejected
   archived
 }
 
@@ -485,6 +700,11 @@ model DocumentTemplate {
   uploadedByRepId   String
   uploadedByRep     AdvisorRep             @relation(fields: [uploadedByRepId], references: [id])
   uploadedAt        DateTime               @default(now())
+
+  // Set when counsel rejects; cleared on resubmission. Distinct from
+  // Subscription.rejectionReason only in which workflow it belongs to.
+  legalRejectionReason String?
+  legalReviewedAt      DateTime?
 
   fieldMappings         FieldMapping[]
   signatureBlocks       SignatureBlock[]
@@ -596,34 +816,41 @@ enum SubscriptionStatus {
 // the sponsor tenant whose fund it subscribes to (sponsorTenantId, denormalized
 // from fund.sponsorTenantId at creation). scopedClient picks which column to
 // filter on based on the caller's tenant TYPE, so neither side can see the
-// other's unrelated subscriptions while both can see this one. See
-// DUAL_TENANT_MODELS in src/db/scopedClient.ts.
+// other's unrelated subscriptions while both can see this one.
+//
+// These two are the only FIXED owners — every subscription has exactly one
+// advisor and one sponsor. Fund admin and custodian are variable and optional
+// per subscription, so they live in SubscriptionParticipant instead of as more
+// nullable columns here. See scopedClient.ts for how visibility resolves for
+// each shape.
 model Subscription {
-  id                String             @id @default(uuid())
-  tenantId          String // advisor tenant that owns the investor relationship
-  tenant            Tenant             @relation(fields: [tenantId], references: [id])
-  sponsorTenantId   String // sponsor tenant that owns the fund — denormalized from fund
-  sponsorTenant     Tenant             @relation("SubscriptionSponsor", fields: [sponsorTenantId], references: [id])
-  // Third owner, when the fund has an administrator on-platform. Null is the
-  // common case and means the sponsor performs fund-admin review itself.
-  fundAdminTenantId String?
-  fundAdminTenant   Tenant?            @relation("SubscriptionFundAdmin", fields: [fundAdminTenantId], references: [id])
-  investorId        String
+  id              String             @id @default(uuid())
+  tenantId        String // advisor tenant that owns the investor relationship
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  sponsorTenantId String // sponsor tenant that owns the fund — denormalized from fund
+  sponsorTenant   Tenant             @relation("SubscriptionSponsor", fields: [sponsorTenantId], references: [id])
+  investorId      String
   // Composite FK, not a bare id reference. Makes it structurally impossible for
   // a subscription to point at another tenant's investor — previously prevented
   // only by every route sourcing related ids from an already tenant-scoped
   // lookup, which is code discipline rather than a guarantee. The leak this
   // closes is characterised in db/includeScoping.test.ts.
-  investor          Investor           @relation(fields: [tenantId, investorId], references: [tenantId, id])
-  fundId            String
+  investor        Investor           @relation(fields: [tenantId, investorId], references: [tenantId, id])
+  fundId          String
   // Deliberately NOT composite: a subscription's fund belongs to a different
   // (sponsor) tenant by design, so there is no shared column to key on. That
   // one cross-tenant reference remains code-enforced, via the entitlement check.
-  fund              Fund               @relation(fields: [fundId], references: [id])
-  status            SubscriptionStatus @default(draft)
-  amount            Decimal?           @db.Decimal(18, 2)
-  fundCloseId       String?
-  fundClose         FundClose?         @relation(fields: [fundCloseId], references: [id])
+  fund            Fund               @relation(fields: [fundId], references: [id])
+  status          SubscriptionStatus @default(draft)
+  amount          Decimal?           @db.Decimal(18, 2)
+  fundCloseId     String?
+  fundClose       FundClose?         @relation(fields: [fundCloseId], references: [id])
+  // Null for the common case (a single-class fund). Not composite/tenant-FK
+  // like investor above: ShareClass belongs to the fund's sponsor tenant, the
+  // same cross-tenant shape as `fund` itself, enforced the same way — the
+  // advisor route validates the class belongs to this fundId before storing it.
+  shareClassId    String?
+  shareClass      ShareClass?        @relation(fields: [shareClassId], references: [id])
 
   // Lifecycle timestamps — set as the subscription moves through the state
   // machine (src/workflow/subscriptionStatus.ts). Nullable because a given
@@ -640,16 +867,38 @@ model Subscription {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  documents  SubscriptionDocument[]
-  signatures SignatureRequest[]
-  position   Position?
+  documents    SubscriptionDocument[]
+  signatures   SignatureRequest[]
+  position     Position?
+  participants SubscriptionParticipant[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
   @@index([sponsorTenantId])
-  @@index([fundAdminTenantId])
   @@index([investorId])
   @@map("subscriptions")
+}
+
+// A variable, optional third-plus party on a subscription: fund admin,
+// custodian, and anyone added later. Not a nullable column per role — that
+// pattern stopped scaling once a second optional party (custodian) showed up
+// alongside fund admin, and a column per role was never going to keep working
+// as the ecosystem grows. `role` is denormalized from the tenant's own type
+// so a query never needs to join Tenant just to know why a party is here.
+model SubscriptionParticipant {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  role           TenantType
+  addedByRepId   String?
+  addedAt        DateTime     @default(now())
+
+  @@unique([subscriptionId, tenantId])
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@map("subscription_participants")
 }
 
 // ---------------------------------------------------------------------------

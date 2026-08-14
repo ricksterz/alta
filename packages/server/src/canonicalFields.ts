@@ -26,6 +26,14 @@ export const CANONICAL_FIELDS = [
   { key: "fund.name", label: "Fund name", sourceModel: "Fund" },
   { key: "fund.legal_name", label: "Fund legal name", sourceModel: "Fund" },
   { key: "fund.gp_signatory_name", label: "GP signatory name", sourceModel: "Fund" },
+  { key: "fund.management_fee_rate", label: "Management fee rate", sourceModel: "FundTerms" },
+  { key: "fund.carried_interest_rate", label: "Carried interest rate", sourceModel: "FundTerms" },
+  { key: "fund.hurdle_rate", label: "Hurdle rate (preferred return)", sourceModel: "FundTerms" },
+  { key: "fund.catch_up_rate", label: "GP catch-up rate", sourceModel: "FundTerms" },
+  { key: "fund.waterfall_type", label: "Distribution waterfall type", sourceModel: "FundTerms" },
+  { key: "fund.gp_commitment_pct", label: "GP commitment (% of fund)", sourceModel: "FundTerms" },
+  { key: "fund.term_years", label: "Fund term (years)", sourceModel: "FundTerms", sourceField: "fundTermYears" },
+  { key: "fund.investment_period_end_date", label: "Investment period end date", sourceModel: "FundTerms" },
 ] as const;
 
 export type CanonicalFieldKey = (typeof CANONICAL_FIELDS)[number]["key"];

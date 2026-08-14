@@ -7,6 +7,8 @@ const ROLE_LABELS: Record<string, string> = {
   advisor_rep: "Rep",
   gp_ops: "GP Ops",
   fund_admin_ops: "Fund Admin",
+  legal_ops: "Legal",
+  custodian_ops: "Custodian",
 };
 
 export function Layout() {
@@ -14,6 +16,11 @@ export function Layout() {
   const navigate = useNavigate();
   const isSponsor = user?.tenantType === "sponsor_firm";
   const isFundAdmin = user?.tenantType === "fund_admin";
+  const isFundLegal = user?.tenantType === "fund_legal";
+  const isCustodian = user?.tenantType === "custodian";
+  // Positions ("Register") is only scoped for advisor_firm and sponsor_firm —
+  // see Position in scopedClient.ts's MULTI_OWNED_MODELS.
+  const canSeePositions = !isFundAdmin && !isFundLegal && !isCustodian;
 
   async function handleLogout() {
     await logout();
@@ -35,15 +42,22 @@ export function Layout() {
                     Funds
                   </Link>
                 )}
-                {!isSponsor && !isFundAdmin && (
+                {!isSponsor && !isFundAdmin && !isFundLegal && !isCustodian && (
                   <Link to="/investors" className="hover:text-slate-900">
                     Investors
                   </Link>
                 )}
-                <Link to="/subscriptions" className="hover:text-slate-900">
-                  Subscriptions
-                </Link>
-                {!isFundAdmin && (
+                {isFundLegal && (
+                  <Link to="/templates" className="hover:text-slate-900">
+                    Legal review
+                  </Link>
+                )}
+                {!isFundLegal && (
+                  <Link to="/subscriptions" className="hover:text-slate-900">
+                    Subscriptions
+                  </Link>
+                )}
+                {canSeePositions && (
                   <Link to="/register" className="hover:text-slate-900">
                     Register
                   </Link>

@@ -9,12 +9,16 @@ import type { SubscriptionListItem } from "../../lib/types";
 // as the default filter is the difference between a queue and a list.
 const ACTIONABLE_FOR_SPONSOR = new Set(["pending_gp_countersign", "pending_fund_admin_review"]);
 const ACTIONABLE_FOR_FUND_ADMIN = new Set(["pending_fund_admin_review", "accepted"]);
+// A custodian only ever sees subscriptions it's attached to, and its one job
+// is confirming funding once accepted — see subscriptionStatus.ts.
+const ACTIONABLE_FOR_CUSTODIAN = new Set(["accepted"]);
 
 export function SubscriptionsQueuePage() {
   const { user } = useAuth();
   const isSponsor = user?.tenantType === "sponsor_firm";
   const isFundAdmin = user?.tenantType === "fund_admin";
-  const isReviewer = isSponsor || isFundAdmin;
+  const isCustodian = user?.tenantType === "custodian";
+  const isReviewer = isSponsor || isFundAdmin || isCustodian;
   const [subs, setSubs] = useState<SubscriptionListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [onlyActionable, setOnlyActionable] = useState(isReviewer);
@@ -26,7 +30,11 @@ export function SubscriptionsQueuePage() {
       .catch((err) => setError(err.message));
   }, []);
 
-  const actionable = isFundAdmin ? ACTIONABLE_FOR_FUND_ADMIN : ACTIONABLE_FOR_SPONSOR;
+  const actionable = isCustodian
+    ? ACTIONABLE_FOR_CUSTODIAN
+    : isFundAdmin
+      ? ACTIONABLE_FOR_FUND_ADMIN
+      : ACTIONABLE_FOR_SPONSOR;
   const visible = subs?.filter((s) => !onlyActionable || actionable.has(s.status));
   const actionableCount = subs?.filter((s) => actionable.has(s.status)).length ?? 0;
 

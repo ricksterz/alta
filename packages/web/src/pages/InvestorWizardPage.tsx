@@ -19,6 +19,10 @@ interface ProfileForm {
   state: string;
   postalCode: string;
   country: string;
+  isErisaPlan: boolean;
+  isIraAccount: boolean;
+  isTaxExempt: boolean;
+  taxResidencyCountry: string;
   jointFirstName: string;
   jointLastName: string;
   jointEmail: string;
@@ -41,6 +45,10 @@ const emptyProfile: ProfileForm = {
   state: "",
   postalCode: "",
   country: "US",
+  isErisaPlan: false,
+  isIraAccount: false,
+  isTaxExempt: false,
+  taxResidencyCountry: "US",
   jointFirstName: "",
   jointLastName: "",
   jointEmail: "",
@@ -151,6 +159,10 @@ export function InvestorWizardPage() {
         state: profile.state || undefined,
         postalCode: profile.postalCode || undefined,
         country: profile.country || undefined,
+        isErisaPlan: profile.isErisaPlan,
+        isIraAccount: profile.isIraAccount,
+        isTaxExempt: profile.isTaxExempt,
+        taxResidencyCountry: profile.taxResidencyCountry || undefined,
         principals,
       });
 
@@ -352,6 +364,49 @@ export function InvestorWizardPage() {
               <input className={inputClass()} placeholder="City" value={profile.city} onChange={(e) => update("city", e.target.value)} />
               <input className={inputClass()} placeholder="State" value={profile.state} onChange={(e) => update("state", e.target.value)} />
               <input className={inputClass()} placeholder="Postal code" value={profile.postalCode} onChange={(e) => update("postalCode", e.target.value)} />
+            </div>
+
+            <div className="rounded border border-slate-200 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Additional eligibility
+              </p>
+              <div className="mb-3">
+                <label className={labelClass()}>Tax residency country</label>
+                <input
+                  className={inputClass()}
+                  value={profile.taxResidencyCountry}
+                  onChange={(e) => update("taxResidencyCountry", e.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Separate from mailing address — some funds don't accept non-US tax residents.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={profile.isErisaPlan}
+                    onChange={(e) => update("isErisaPlan", e.target.checked)}
+                  />
+                  ERISA employee benefit plan
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={profile.isIraAccount}
+                    onChange={(e) => update("isIraAccount", e.target.checked)}
+                  />
+                  Investing through an IRA
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={profile.isTaxExempt}
+                    onChange={(e) => update("isTaxExempt", e.target.checked)}
+                  />
+                  Tax-exempt entity
+                </label>
+              </div>
             </div>
           </div>
         )}

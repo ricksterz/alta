@@ -27,6 +27,8 @@ export function fundsEntitledToAdvisor(advisorTenantId: string) {
             where: { status: "ready" },
             include: { fieldMappings: { select: { mappingType: true } } },
           },
+          terms: true,
+          shareClasses: { where: { closedToNewInvestors: false }, orderBy: { name: "asc" } },
         },
       },
     },
@@ -39,7 +41,7 @@ export function fundsEntitledToAdvisor(advisorTenantId: string) {
 export function activeEntitlement(advisorTenantId: string, fundId: string) {
   return prisma.fundAdvisorEntitlement.findFirst({
     where: { advisorTenantId, fundId, status: "active" },
-    include: { fund: true },
+    include: { fund: { include: { terms: true, shareClasses: true } } },
   });
 }
 
@@ -62,6 +64,29 @@ export function nextOpenClose(fundId: string) {
   return prisma.fundClose.findFirst({
     where: { fundId, status: "open" },
     orderBy: { closeDate: "asc" },
+  });
+}
+
+/** Attaches a fund admin or custodian as a participant on a subscription.
+ *  Safe: the subscriptionId a caller can supply is already constrained to
+ *  subscriptions the caller's own scoped client can see, and the tenantId
+ *  attached comes from trusted state (Fund.fundAdminTenantId, or a custodian
+ *  explicitly chosen through its own authorized route) rather than arbitrary
+ *  client input. SubscriptionParticipant can't use the normal scoped-create
+ *  path because the tenant being written is a third party, not the caller. */
+export function addSubscriptionParticipant(params: {
+  subscriptionId: string;
+  tenantId: string;
+  role: "fund_admin" | "custodian";
+  addedByRepId?: string | null;
+}) {
+  return prisma.subscriptionParticipant.create({
+    data: {
+      subscriptionId: params.subscriptionId,
+      tenantId: params.tenantId,
+      role: params.role,
+      addedByRepId: params.addedByRepId ?? null,
+    },
   });
 }
 

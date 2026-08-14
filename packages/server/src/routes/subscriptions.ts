@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import type { SubscriptionStatus } from "@prisma/client";
+import type { SubscriptionStatus, TenantType } from "@prisma/client";
 import {
   requireAdvisorTenant,
   requireAuth,
+  requireCustodianTenant,
   requireSponsorOrFundAdmin,
   requireSponsorTenant,
 } from "../middleware/requireAuth.js";
@@ -13,6 +14,7 @@ import { audit } from "../audit.js";
 import { CANONICAL_FIELDS } from "../canonicalFields.js";
 import {
   activeEntitlement,
+  addSubscriptionParticipant,
   fundsEntitledToAdvisor,
   nextOpenClose,
   readyTemplateForFund,
@@ -45,6 +47,22 @@ function investorDisplayName(inv: {
     : `${inv.firstName ?? ""} ${inv.lastName ?? ""}`.trim() || "(unnamed)";
 }
 
+// fundAdminTenantId used to be a column on Subscription; it's now derived
+// from the participant join table (a fund admin is one optional party among
+// several, not one of the two parties present on every subscription — see
+// SubscriptionParticipant in the schema). Every transitionTo call site must
+// fetch its subscription with a `participants` include covering fund_admin
+// and custodian, and pass the result through these rather than guessing.
+function fundAdminTenantIdOf(participants: { role: string; tenantId: string }[]): string | null {
+  return participants.find((p) => p.role === "fund_admin")?.tenantId ?? null;
+}
+function custodianTenantIdOf(participants: { role: string; tenantId: string }[]): string | null {
+  return participants.find((p) => p.role === "custodian")?.tenantId ?? null;
+}
+const PARTICIPANT_ROLES_FOR_TRANSITIONS = {
+  role: { in: ["fund_admin", "custodian"] as TenantType[] },
+};
+
 // Applies a status transition with its timestamp and audit event. Every status
 // change goes through here so the state machine can't be bypassed by a route
 // setting `status` directly.
@@ -53,14 +71,19 @@ async function transitionTo(
   subscription: {
     id: string;
     status: SubscriptionStatus;
-    fundAdminTenantId?: string | null;
+    fundAdminTenantId: string | null;
+    custodianTenantId: string | null;
   },
   to: SubscriptionStatus,
   extraData: Record<string, unknown> = {},
   extraMetadata: Record<string, unknown> = {}
 ) {
   const rule = assertTransition(
-    { status: subscription.status, fundAdminTenantId: subscription.fundAdminTenantId },
+    {
+      status: subscription.status,
+      fundAdminTenantId: subscription.fundAdminTenantId,
+      custodianTenantId: subscription.custodianTenantId,
+    },
     to,
     ctx.tenantType
   );
@@ -103,6 +126,21 @@ subscriptionsRouter.get("/available-funds", requireAdvisorTenant, async (req, re
           closeDate: e.fund.closeDate,
           exclusion: e.fund.exclusion,
           domicile: e.fund.domicile,
+          vintageYear: e.fund.vintageYear,
+          assetClass: e.fund.assetClass,
+          strategy: e.fund.strategy,
+          managementFeeRate: e.fund.terms?.managementFeeRate ?? null,
+          carriedInterestRate: e.fund.terms?.carriedInterestRate ?? null,
+          hurdleRate: e.fund.terms?.hurdleRate ?? null,
+          shareClasses: e.fund.shareClasses.map((c) => ({
+            id: c.id,
+            name: c.name,
+            currency: c.currency,
+            minInvestment: c.minInvestment,
+            managementFeeRate: c.managementFeeRate,
+            carriedInterestRate: c.carriedInterestRate,
+            closedToNewInvestors: c.closedToNewInvestors,
+          })),
           hasTemplate: Boolean(template),
           templateUnmappedFieldCount: template
             ? template.fieldMappings.filter((m) => m.mappingType === "unmapped").length
@@ -110,6 +148,30 @@ subscriptionsRouter.get("/available-funds", requireAdvisorTenant, async (req, re
         };
       })
   );
+});
+
+// ---------------------------------------------------------------------------
+// GET /subscriptions/custodian-tenants?search= — advisor lookup for the
+// attach-custodian screen. Tenant is exempt from tenant-scoping, so this is
+// unfiltered by caller on purpose, same reasoning as advisorTenants.ts: an
+// advisor choosing which custodian to attach needs to see every custodian on
+// the platform, not just its own (an advisor has no "own" custodian).
+// ---------------------------------------------------------------------------
+subscriptionsRouter.get("/custodian-tenants", requireAdvisorTenant, async (req, res) => {
+  const ctx = req.ctx!;
+  const search = typeof req.query.search === "string" ? req.query.search : undefined;
+
+  const tenants = await ctx.db.tenant.findMany({
+    where: {
+      type: "custodian",
+      ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
+    },
+    select: { id: true, name: true, slug: true },
+    orderBy: { name: "asc" },
+    take: 25,
+  });
+
+  res.json(tenants);
 });
 
 // ---------------------------------------------------------------------------
@@ -139,8 +201,19 @@ subscriptionsRouter.get("/eligibility", requireAdvisorTenant, async (req, res) =
         type: investor.type,
         accreditationBasis: investor.accreditationBasis,
         qualifiedPurchaserBasis: investor.qualifiedPurchaserBasis,
+        isErisaPlan: investor.isErisaPlan,
+        isIraAccount: investor.isIraAccount,
+        isTaxExempt: investor.isTaxExempt,
+        taxResidencyCountry: investor.taxResidencyCountry,
       },
-      fund: { exclusion: entitlement.fund.exclusion, name: entitlement.fund.name },
+      fund: {
+        exclusion: entitlement.fund.exclusion,
+        name: entitlement.fund.name,
+        erisaEligible: entitlement.fund.erisaEligible,
+        iraEligible: entitlement.fund.iraEligible,
+        nonUsInvestorsPermitted: entitlement.fund.nonUsInvestorsPermitted,
+        taxExemptEligible: entitlement.fund.taxExemptEligible,
+      },
       holderCapacity: await holderCapacity(entitlement.fund.id),
     })
   );
@@ -188,13 +261,15 @@ subscriptionsRouter.get("/:id", async (req, res) => {
     where: { id: req.params.id },
     include: {
       investor: true,
-      fund: true,
+      fund: { include: { terms: true } },
+      shareClass: true,
       tenant: { select: { id: true, name: true } },
       documents: { orderBy: { generatedAt: "desc" } },
       signatures: {
         orderBy: { sequence: "asc" },
         include: { _count: { select: { fulfillments: true } } },
       },
+      participants: { include: { tenant: { select: { id: true, name: true, type: true } } } },
     },
   });
   if (!subscription) {
@@ -203,6 +278,10 @@ subscriptionsRouter.get("/:id", async (req, res) => {
 
   res.json({
     ...subscription,
+    participants: subscription.participants.map((p) => ({
+      role: p.role,
+      tenant: p.tenant,
+    })),
     signatures: subscription.signatures.map((s) => ({
       ...s,
       blocksExecuted: s._count.fulfillments,
@@ -220,6 +299,7 @@ const createSchema = z.object({
   investorId: z.string().uuid(),
   fundId: z.string().uuid(),
   amount: z.number().positive(),
+  shareClassId: z.string().uuid().optional(),
 });
 
 subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
@@ -256,8 +336,19 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
       type: investor.type,
       accreditationBasis: investor.accreditationBasis,
       qualifiedPurchaserBasis: investor.qualifiedPurchaserBasis,
+      isErisaPlan: investor.isErisaPlan,
+      isIraAccount: investor.isIraAccount,
+      isTaxExempt: investor.isTaxExempt,
+      taxResidencyCountry: investor.taxResidencyCountry,
     },
-    fund: { exclusion: fund.exclusion, name: fund.name },
+    fund: {
+      exclusion: fund.exclusion,
+      name: fund.name,
+      erisaEligible: fund.erisaEligible,
+      iraEligible: fund.iraEligible,
+      nonUsInvestorsPermitted: fund.nonUsInvestorsPermitted,
+      taxExemptEligible: fund.taxExemptEligible,
+    },
     holderCapacity: await holderCapacity(fund.id),
   });
   if (!eligibility.eligible) {
@@ -279,9 +370,24 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
     });
   }
 
-  if (fund.minInvestment && parsed.data.amount < Number(fund.minInvestment)) {
+  // A chosen share class must belong to this fund and still be open — an
+  // advisor picking a class id isn't proof it's valid, the same reasoning as
+  // re-verifying fundId against entitlement rather than trusting the client.
+  let shareClass: (typeof fund.shareClasses)[number] | null = null;
+  if (parsed.data.shareClassId) {
+    shareClass = fund.shareClasses.find((c) => c.id === parsed.data.shareClassId) ?? null;
+    if (!shareClass) {
+      return res.status(400).json({ error: "Share class not found on this fund" });
+    }
+    if (shareClass.closedToNewInvestors) {
+      return res.status(400).json({ error: `${shareClass.name} is closed to new investors` });
+    }
+  }
+
+  const minInvestment = shareClass?.minInvestment ?? fund.minInvestment;
+  if (minInvestment && parsed.data.amount < Number(minInvestment)) {
     return res.status(400).json({
-      error: `Amount is below this fund's ${Number(fund.minInvestment).toLocaleString("en-US", {
+      error: `Amount is below this fund's ${Number(minInvestment).toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
       })} minimum`,
@@ -296,15 +402,27 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
     data: {
       tenantId: ctx.tenantId,
       sponsorTenantId: fund.sponsorTenantId,
-      fundAdminTenantId: fund.fundAdminTenantId,
       investorId: investor.id,
       fundId: fund.id,
       fundCloseId: nextClose?.id ?? null,
+      shareClassId: shareClass?.id ?? null,
       amount: parsed.data.amount,
       status: "draft",
       createdByRepId: ctx.advisorRepId,
     },
   });
+
+  // The fund's engaged fund admin (if any) rides along onto every subscription
+  // against that fund, as a participant rather than a column — see
+  // SubscriptionParticipant.
+  if (fund.fundAdminTenantId) {
+    await addSubscriptionParticipant({
+      subscriptionId: subscription.id,
+      tenantId: fund.fundAdminTenantId,
+      role: "fund_admin",
+      addedByRepId: ctx.advisorRepId,
+    });
+  }
 
   await audit(ctx.db, ctx.tenantId, {
     actorType: "advisor_rep",
@@ -315,7 +433,11 @@ subscriptionsRouter.post("/", requireAdvisorTenant, async (req, res) => {
     metadata: { investorId: investor.id, fundId: fund.id, amount: parsed.data.amount },
   });
 
-  await transitionTo(ctx, subscription, "pending_investor_data");
+  await transitionTo(
+    ctx,
+    { ...subscription, fundAdminTenantId: fund.fundAdminTenantId, custodianTenantId: null },
+    "pending_investor_data"
+  );
 
   res.status(201).json({ id: subscription.id });
 });
@@ -327,7 +449,12 @@ subscriptionsRouter.post("/:id/generate-document", requireAdvisorTenant, async (
   const ctx = req.ctx!;
   const subscription = await ctx.db.subscription.findFirst({
     where: { id: req.params.id },
-    include: { investor: { include: { taxProfile: true, principals: true } }, fund: true },
+    include: {
+      investor: { include: { taxProfile: true, principals: true } },
+      fund: { include: { terms: true } },
+      shareClass: true,
+      participants: { where: PARTICIPANT_ROLES_FOR_TRANSITIONS },
+    },
   });
   if (!subscription) {
     return res.status(404).json({ error: "Subscription not found" });
@@ -359,7 +486,7 @@ subscriptionsRouter.post("/:id/generate-document", requireAdvisorTenant, async (
       canonicalField: m.canonicalField,
       staticValue: m.staticValue,
     })),
-    { investor: investorForFill, subscription, fund: subscription.fund }
+    { investor: investorForFill, subscription, fund: subscription.fund, shareClass: subscription.shareClass }
   );
 
   const fieldLabels: Record<string, string> = {};
@@ -449,7 +576,17 @@ subscriptionsRouter.post("/:id/generate-document", requireAdvisorTenant, async (
     },
   });
 
-  await transitionTo(ctx, subscription, "pending_signatures", {}, { documentId: document.id });
+  await transitionTo(
+    ctx,
+    {
+      ...subscription,
+      fundAdminTenantId: fundAdminTenantIdOf(subscription.participants),
+      custodianTenantId: custodianTenantIdOf(subscription.participants),
+    },
+    "pending_signatures",
+    {},
+    { documentId: document.id }
+  );
 
   res.status(201).json({
     documentId: document.id,
@@ -488,7 +625,10 @@ subscriptionsRouter.post("/:id/signatures/:sigId/sign", async (req, res) => {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const subscription = await ctx.db.subscription.findFirst({ where: { id: req.params.id } });
+  const subscription = await ctx.db.subscription.findFirst({
+    where: { id: req.params.id },
+    include: { participants: { where: PARTICIPANT_ROLES_FOR_TRANSITIONS } },
+  });
   if (!subscription) {
     return res.status(404).json({ error: "Subscription not found" });
   }
@@ -579,10 +719,15 @@ subscriptionsRouter.post("/:id/signatures/:sigId/sign", async (req, res) => {
     where: { subscriptionId: subscription.id, role: "investor_signer", status: "pending" },
   });
 
+  const subscriptionForTransition = {
+    ...subscription,
+    fundAdminTenantId: fundAdminTenantIdOf(subscription.participants),
+    custodianTenantId: custodianTenantIdOf(subscription.participants),
+  };
   if (signature.role === "investor_signer" && remainingInvestor === 0) {
-    await transitionTo(ctx, subscription, "pending_gp_countersign");
+    await transitionTo(ctx, subscriptionForTransition, "pending_gp_countersign");
   } else if (signature.role === "gp_countersigner") {
-    await transitionTo(ctx, subscription, "pending_fund_admin_review");
+    await transitionTo(ctx, subscriptionForTransition, "pending_fund_admin_review");
   }
 
   res.status(204).end();
@@ -603,7 +748,10 @@ subscriptionsRouter.post("/:id/transition", requireSponsorOrFundAdmin, async (re
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const subscription = await ctx.db.subscription.findFirst({ where: { id: req.params.id } });
+  const subscription = await ctx.db.subscription.findFirst({
+    where: { id: req.params.id },
+    include: { participants: { where: PARTICIPANT_ROLES_FOR_TRANSITIONS } },
+  });
   if (!subscription) {
     return res.status(404).json({ error: "Subscription not found" });
   }
@@ -613,7 +761,17 @@ subscriptionsRouter.post("/:id/transition", requireSponsorOrFundAdmin, async (re
 
   const extra =
     parsed.data.to === "rejected" ? { rejectionReason: parsed.data.rejectionReason } : {};
-  await transitionTo(ctx, subscription, parsed.data.to, extra, extra);
+  await transitionTo(
+    ctx,
+    {
+      ...subscription,
+      fundAdminTenantId: fundAdminTenantIdOf(subscription.participants),
+      custodianTenantId: custodianTenantIdOf(subscription.participants),
+    },
+    parsed.data.to,
+    extra,
+    extra
+  );
 
   // Funding is where a position begins. Created here rather than on acceptance
   // because an accepted-but-unfunded subscription is a commitment, not a
@@ -621,6 +779,89 @@ subscriptionsRouter.post("/:id/transition", requireSponsorOrFundAdmin, async (re
   if (parsed.data.to === "funded") {
     await openPositionForSubscription(subscription.id);
   }
+
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// POST /subscriptions/:id/custodian — advisor attaches a custodian to watch
+// funding on this subscription. Once attached, that custodian becomes the
+// exclusive party who may confirm funding — see subscriptionStatus.ts.
+// ---------------------------------------------------------------------------
+const attachCustodianSchema = z.object({ custodianTenantId: z.string().uuid() });
+
+subscriptionsRouter.post("/:id/custodian", requireAdvisorTenant, async (req, res) => {
+  const ctx = req.ctx!;
+  const parsed = attachCustodianSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  const subscription = await ctx.db.subscription.findFirst({
+    where: { id: req.params.id },
+    include: { participants: { where: { role: "custodian" } } },
+  });
+  if (!subscription) {
+    return res.status(404).json({ error: "Subscription not found" });
+  }
+  if (subscription.participants.length > 0) {
+    return res.status(400).json({ error: "A custodian is already attached to this subscription" });
+  }
+
+  // Tenant is exempt from tenant-scoping (it IS the tenant record), so this
+  // read is unfiltered by design — constrained here to type "custodian" so
+  // an advisor can't attach an arbitrary tenant into the role.
+  const custodianTenant = await ctx.db.tenant.findFirst({
+    where: { id: parsed.data.custodianTenantId, type: "custodian" },
+  });
+  if (!custodianTenant) {
+    return res.status(404).json({ error: "Custodian tenant not found" });
+  }
+
+  await addSubscriptionParticipant({
+    subscriptionId: subscription.id,
+    tenantId: custodianTenant.id,
+    role: "custodian",
+    addedByRepId: ctx.advisorRepId,
+  });
+
+  await audit(ctx.db, ctx.tenantId, {
+    actorType: "advisor_rep",
+    actorId: ctx.advisorRepId,
+    action: "subscription.custodian_attached",
+    entityType: "Subscription",
+    entityId: subscription.id,
+    metadata: { custodianTenantId: custodianTenant.id, custodianName: custodianTenant.name },
+  });
+
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// POST /subscriptions/:id/confirm-funding — the attached custodian's sole
+// action: confirm capital actually landed. Only reachable once a custodian
+// is attached and the subscription is accepted; assertTransition enforces
+// both (wrong actor -> 403, wrong state -> 400).
+// ---------------------------------------------------------------------------
+subscriptionsRouter.post("/:id/confirm-funding", requireCustodianTenant, async (req, res) => {
+  const ctx = req.ctx!;
+  const subscription = await ctx.db.subscription.findFirst({
+    where: { id: req.params.id },
+    include: { participants: { where: PARTICIPANT_ROLES_FOR_TRANSITIONS } },
+  });
+  if (!subscription) {
+    return res.status(404).json({ error: "Subscription not found" });
+  }
+
+  await transitionTo(ctx, {
+    ...subscription,
+    fundAdminTenantId: fundAdminTenantIdOf(subscription.participants),
+    custodianTenantId: custodianTenantIdOf(subscription.participants),
+  }, "funded");
+
+  // Same rule as the sponsor/fund-admin funding path: a position begins at
+  // funding, not acceptance.
+  await openPositionForSubscription(subscription.id);
 
   res.status(204).end();
 });

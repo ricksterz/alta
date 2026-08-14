@@ -17,6 +17,16 @@ const ids = {
   sponsorA: "bbbbbbbb-0000-4000-8000-000000000001",
   sponsorB: "bbbbbbbb-0000-4000-8000-000000000002",
   admin: "cccccccc-0000-4000-8000-000000000001",
+  fundLegal: "ffffffff-0000-4000-8000-000000000001",
+};
+
+const TENANT_TYPES: Record<keyof typeof ids, "advisor_firm" | "sponsor_firm" | "fund_admin" | "fund_legal"> = {
+  advisorA: "advisor_firm",
+  advisorB: "advisor_firm",
+  sponsorA: "sponsor_firm",
+  sponsorB: "sponsor_firm",
+  admin: "fund_admin",
+  fundLegal: "fund_legal",
 };
 
 let fundA = "";
@@ -31,11 +41,7 @@ beforeAll(async () => {
         id,
         name: `Tenant ${key}`,
         slug: `tenant-${key}`,
-        type: key.startsWith("advisor")
-          ? "advisor_firm"
-          : key.startsWith("sponsor")
-            ? "sponsor_firm"
-            : "fund_admin",
+        type: TENANT_TYPES[key as keyof typeof ids],
       },
     });
   }
@@ -59,6 +65,7 @@ beforeAll(async () => {
     data: {
       sponsorTenantId: ids.sponsorA,
       fundAdminTenantId: ids.admin, // Sponsor A engages the administrator
+      fundLegalTenantId: ids.fundLegal, // ...and counsel
       name: "Fund A",
       vehicleType: "lp",
       structure: "drawdown",
@@ -67,7 +74,7 @@ beforeAll(async () => {
   });
   const fb = await prisma.fund.create({
     data: {
-      sponsorTenantId: ids.sponsorB, // Sponsor B does not
+      sponsorTenantId: ids.sponsorB, // Sponsor B engages neither
       name: "Fund B",
       vehicleType: "lp",
       structure: "drawdown",
@@ -76,6 +83,29 @@ beforeAll(async () => {
   });
   fundA = fa.id;
   fundB = fb.id;
+
+  await prisma.documentTemplate.create({
+    data: {
+      sponsorTenantId: ids.sponsorA,
+      fundId: fundA,
+      anvilTemplateId: "cast_a",
+      originalFilename: "fund-a-subscription-agreement.pdf",
+      status: "pending_legal_review",
+      detectedFieldsRaw: {},
+      uploadedByRepId: reps.sponsorA,
+    },
+  });
+  await prisma.documentTemplate.create({
+    data: {
+      sponsorTenantId: ids.sponsorB,
+      fundId: fundB,
+      anvilTemplateId: "cast_b",
+      originalFilename: "fund-b-subscription-agreement.pdf",
+      status: "ready",
+      detectedFieldsRaw: {},
+      uploadedByRepId: reps.sponsorB,
+    },
+  });
 
   const invA = await prisma.investor.create({
     data: { tenantId: ids.advisorA, type: "entity", entityName: "Inv A", createdByRepId: reps.advisorA },
@@ -88,7 +118,6 @@ beforeAll(async () => {
     data: {
       tenantId: ids.advisorA,
       sponsorTenantId: ids.sponsorA,
-      fundAdminTenantId: ids.admin,
       investorId: invA.id,
       fundId: fundA,
       createdByRepId: reps.advisorA,
@@ -107,6 +136,12 @@ beforeAll(async () => {
   });
   subA = sa.id;
   subB = sb.id;
+
+  // Sponsor A's fund has an engaged administrator; subA (against that fund)
+  // carries it as a participant. Sponsor B's fund, and subB, have none.
+  await prisma.subscriptionParticipant.create({
+    data: { subscriptionId: subA, tenantId: ids.admin, role: "fund_admin" },
+  });
 
   await prisma.position.createMany({
     data: [
@@ -201,10 +236,59 @@ describe("multi-owned Subscription", () => {
   });
 
   it("hides a subscription from an administrator not engaged on that fund", async () => {
-    // Sponsor B engaged no administrator, so subB carries a null
-    // fundAdminTenantId and must not surface for anyone.
+    // Sponsor B engaged no administrator, so subB has no fund_admin
+    // participant row and must not surface for anyone.
     const fa = scopedClient(ids.admin, "fund_admin");
     expect(await fa.subscription.findFirst({ where: { id: subB } })).toBeNull();
+  });
+
+  it("hides every subscription from a custodian with no participant rows at all", async () => {
+    const custodian = scopedClient(ids.admin, "custodian");
+    expect(await custodian.subscription.findMany()).toHaveLength(0);
+  });
+
+  it("refuses to create a Subscription in participant mode", async () => {
+    // No route ever creates a Subscription as fund_admin or custodian — this
+    // must fail loudly rather than silently mis-scoping the write.
+    const fa = scopedClient(ids.admin, "fund_admin");
+    // The extension throws before this ever reaches Prisma's own validation,
+    // so an intentionally incomplete `data` is fine here — cast past the
+    // compile-time shape check to exercise that runtime guard directly.
+    await expect(
+      fa.subscription.create({
+        data: {
+          tenantId: ids.advisorA,
+          sponsorTenantId: ids.sponsorA,
+          investorId: "00000000-0000-4000-8000-000000000000",
+          fundId: fundA,
+          amount: 1,
+        } as Parameters<typeof fa.subscription.create>[0]["data"],
+      })
+    ).rejects.toThrow(/not supported for a participant-scoped tenant type/);
+  });
+});
+
+describe("DocumentTemplate scoped via the fund's counsel relation", () => {
+  it("is visible to the sponsor that owns it", async () => {
+    const sa = scopedClient(ids.sponsorA, "sponsor_firm");
+    const templates = await sa.documentTemplate.findMany();
+    expect(templates.map((t) => t.anvilTemplateId)).toEqual(["cast_a"]);
+  });
+
+  it("is visible to the fund's engaged counsel, one hop via Fund", async () => {
+    const legal = scopedClient(ids.fundLegal, "fund_legal");
+    const templates = await legal.documentTemplate.findMany();
+    expect(templates.map((t) => t.anvilTemplateId)).toEqual(["cast_a"]);
+  });
+
+  it("hides a template belonging to a fund this counsel is not engaged on", async () => {
+    const legal = scopedClient(ids.fundLegal, "fund_legal");
+    expect(await legal.documentTemplate.findFirst({ where: { fundId: fundB } })).toBeNull();
+  });
+
+  it("refuses an advisor firm outright — it is never a party to a template", async () => {
+    const a = scopedClient(ids.advisorA, "advisor_firm");
+    await expect(a.documentTemplate.findMany()).rejects.toThrow(/not visible to a advisor_firm tenant/);
   });
 });
 

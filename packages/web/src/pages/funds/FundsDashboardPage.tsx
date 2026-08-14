@@ -17,6 +17,18 @@ const STATUS_STYLES: Record<string, string> = {
   closed: "bg-amber-50 text-amber-700",
 };
 
+const STRATEGY_LABELS: Record<string, string> = {
+  buyout: "Buyout",
+  growth_equity: "Growth equity",
+  venture: "Venture",
+  credit: "Credit",
+  real_estate: "Real estate",
+  infrastructure: "Infrastructure",
+  secondaries: "Secondaries",
+  fund_of_funds: "Fund of funds",
+  other: "Other",
+};
+
 export function FundsDashboardPage() {
   const [funds, setFunds] = useState<FundListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +67,7 @@ export function FundsDashboardPage() {
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Vehicle</th>
+                <th className="px-4 py-3">Strategy</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Min. investment</th>
                 <th className="px-4 py-3">Advisor entitlements</th>
@@ -71,6 +84,10 @@ export function FundsDashboardPage() {
                   <td className="px-4 py-3 text-slate-600">
                     {VEHICLE_LABELS[fund.vehicleType]}
                     <span className="ml-2 text-xs text-slate-400">{fund.structure}</span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {fund.strategy ? STRATEGY_LABELS[fund.strategy] : "—"}
+                    {fund.vintageYear && <span className="ml-2 text-xs text-slate-400">{fund.vintageYear}</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[fund.status]}`}>

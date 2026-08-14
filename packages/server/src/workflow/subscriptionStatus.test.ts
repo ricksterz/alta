@@ -80,6 +80,44 @@ describe("fund administrator vs sponsor fallback", () => {
   });
 });
 
+describe("custodian vs fund administrator vs sponsor, for funding confirmation", () => {
+  const fundedRule = () => TRANSITIONS.find((t) => t.from === "accepted" && t.to === "funded")!;
+
+  it("assigns funding confirmation to an attached custodian over an engaged administrator", () => {
+    const subject = {
+      status: "accepted" as const,
+      fundAdminTenantId: "admin-tenant-id",
+      custodianTenantId: "custodian-tenant-id",
+    };
+    expect(effectiveActor(fundedRule(), subject)).toBe("custodian");
+  });
+
+  it("falls back to the administrator when no custodian is attached", () => {
+    const subject = {
+      status: "accepted" as const,
+      fundAdminTenantId: "admin-tenant-id",
+      custodianTenantId: null,
+    };
+    expect(effectiveActor(fundedRule(), subject)).toBe("fund_admin");
+  });
+
+  it("falls back to the sponsor when neither is engaged", () => {
+    const subject = { status: "accepted" as const, fundAdminTenantId: null, custodianTenantId: null };
+    expect(effectiveActor(fundedRule(), subject)).toBe("sponsor_firm");
+  });
+
+  it("locks the administrator and sponsor out once a custodian is attached", () => {
+    const subject = {
+      status: "accepted" as const,
+      fundAdminTenantId: "admin-tenant-id",
+      custodianTenantId: "custodian-tenant-id",
+    };
+    expect(() => assertTransition(subject, "funded", "fund_admin")).toThrow(/custodian/);
+    expect(() => assertTransition(subject, "funded", "sponsor_firm")).toThrow(/custodian/);
+    expect(() => assertTransition(subject, "funded", "custodian")).not.toThrow();
+  });
+});
+
 describe("transition legality", () => {
   it("refuses to skip the signature and countersign steps", () => {
     expect(() =>

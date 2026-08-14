@@ -1,7 +1,9 @@
 import type {
   Fund,
+  FundTerms,
   Investor,
   InvestorTaxProfile,
+  ShareClass,
   Subscription,
 } from "@prisma/client";
 import type { CanonicalFieldKey } from "../canonicalFields.js";
@@ -20,7 +22,9 @@ import type { CanonicalFieldKey } from "../canonicalFields.js";
 export interface ResolutionSource {
   investor: Investor & { taxProfile: InvestorTaxProfile | null };
   subscription: Subscription;
-  fund: Fund;
+  fund: Fund & { terms: FundTerms | null };
+  /** The subscription's share class, when the fund has more than one. */
+  shareClass?: ShareClass | null;
 }
 
 export interface FieldMappingInput {
@@ -58,6 +62,22 @@ function formatDate(value: Date | null): string | null {
   if (!value) return null;
   return value.toISOString().slice(0, 10);
 }
+
+// FundTerms rates are stored as decimals (0.0200 = 2.00%), the same
+// convention a cap table or LPA schedule uses internally but not what
+// belongs on a document a human reads.
+function formatPercent(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  if (Number.isNaN(n)) return null;
+  return `${(n * 100).toFixed(2)}%`;
+}
+
+const WATERFALL_LABELS: Record<string, string> = {
+  european: "European (whole-fund) waterfall",
+  american: "American (deal-by-deal) waterfall",
+  hybrid: "Hybrid waterfall",
+};
 
 // Human-readable rendering of the accreditation enum. The raw enum value
 // (entity_assets_over_5m) is a database token, not something that belongs on a
@@ -107,6 +127,22 @@ const RESOLVERS: Record<CanonicalFieldKey, Resolver> = {
   "fund.name": ({ fund }) => fund.name,
   "fund.legal_name": ({ fund }) => fund.legalName ?? fund.name,
   "fund.gp_signatory_name": ({ fund }) => fund.gpSignatoryName,
+  // Share-class rate wins when the subscription's class sets one; otherwise
+  // fall back to the fund-wide term. A class without its own rate isn't
+  // "no fee" — it inherits the fund's, the same way an unset closeDate on a
+  // FundClose isn't "no close".
+  "fund.management_fee_rate": ({ fund, shareClass }) =>
+    formatPercent(shareClass?.managementFeeRate ?? fund.terms?.managementFeeRate),
+  "fund.carried_interest_rate": ({ fund, shareClass }) =>
+    formatPercent(shareClass?.carriedInterestRate ?? fund.terms?.carriedInterestRate),
+  "fund.hurdle_rate": ({ fund }) => formatPercent(fund.terms?.hurdleRate),
+  "fund.catch_up_rate": ({ fund }) => formatPercent(fund.terms?.catchUpRate),
+  "fund.waterfall_type": ({ fund }) =>
+    fund.terms?.waterfallType ? (WATERFALL_LABELS[fund.terms.waterfallType] ?? null) : null,
+  "fund.gp_commitment_pct": ({ fund }) => formatPercent(fund.terms?.gpCommitmentPct),
+  "fund.term_years": ({ fund }) =>
+    fund.terms?.fundTermYears ? `${fund.terms.fundTermYears} years` : null,
+  "fund.investment_period_end_date": ({ fund }) => formatDate(fund.terms?.investmentPeriodEndDate ?? null),
 };
 
 export function resolveFields(

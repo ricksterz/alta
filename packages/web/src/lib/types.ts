@@ -41,14 +41,14 @@ export type SubscriptionStatus =
   | "rejected"
   | "funded";
 
-export type TenantType = "advisor_firm" | "sponsor_firm" | "fund_admin";
+export type TenantType = "advisor_firm" | "sponsor_firm" | "fund_admin" | "fund_legal" | "custodian";
 
 export interface AdvisorRepSummary {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: "advisor_rep" | "advisor_admin" | "gp_ops" | "fund_admin_ops";
+  role: "advisor_rep" | "advisor_admin" | "gp_ops" | "fund_admin_ops" | "legal_ops" | "custodian_ops";
   tenantId: string;
   tenantType: TenantType;
 }
@@ -59,7 +59,32 @@ export type FundVehicleType = "lp" | "llc_feeder" | "interval_fund" | "non_trade
 export type FundStructure = "drawdown" | "continuous";
 export type FundStatus = "draft" | "active" | "closed";
 export type EntitlementStatus = "active" | "revoked";
-export type DocumentTemplateStatus = "processing" | "ready" | "archived";
+export type FundAssetClass =
+  | "private_equity"
+  | "venture_capital"
+  | "private_credit"
+  | "real_estate"
+  | "infrastructure"
+  | "hedge_fund"
+  | "fund_of_funds";
+export type FundStrategyType =
+  | "buyout"
+  | "growth_equity"
+  | "venture"
+  | "credit"
+  | "real_estate"
+  | "infrastructure"
+  | "secondaries"
+  | "fund_of_funds"
+  | "other";
+export type ManagementFeeBasis = "commitments" | "invested_capital" | "nav";
+export type WaterfallType = "european" | "american" | "hybrid";
+export type DocumentTemplateStatus =
+  | "processing"
+  | "pending_legal_review"
+  | "ready"
+  | "rejected"
+  | "archived";
 export type FieldMappingType = "canonical" | "static_value" | "unmapped";
 
 export interface FundListItem {
@@ -71,8 +96,40 @@ export interface FundListItem {
   minInvestment: string | null;
   closeDate: string | null;
   createdAt: string;
+  vintageYear: number | null;
+  assetClass: FundAssetClass | null;
+  strategy: FundStrategyType | null;
   activeEntitlementCount: number;
   totalEntitlementCount: number;
+}
+
+export interface FundTerms {
+  id: string;
+  managementFeeRate: string | null;
+  managementFeeBasis: ManagementFeeBasis | null;
+  carriedInterestRate: string | null;
+  hurdleRate: string | null;
+  catchUpRate: string | null;
+  waterfallType: WaterfallType | null;
+  gpCommitmentPct: string | null;
+  fundTermYears: number | null;
+  extensionYears: number | null;
+  investmentPeriodEndDate: string | null;
+  recyclingPermitted: boolean | null;
+  clawbackProvision: boolean | null;
+  sourceDocument: string | null;
+  asOfDate: string | null;
+  isEstimate: boolean;
+}
+
+export interface ShareClassItem {
+  id: string;
+  name: string;
+  currency: string;
+  minInvestment: string | null;
+  managementFeeRate: string | null;
+  carriedInterestRate: string | null;
+  closedToNewInvestors: boolean;
 }
 
 export interface FundAdvisorEntitlement {
@@ -102,6 +159,25 @@ export interface FundDetail {
   status: FundStatus;
   gpSignatoryName: string | null;
   createdAt: string;
+  vintageYear: number | null;
+  fundFamily: string | null;
+  fundNumber: string | null;
+  assetClass: FundAssetClass | null;
+  strategy: FundStrategyType | null;
+  baseCurrency: string;
+  lei: string | null;
+  targetSize: string | null;
+  hardCap: string | null;
+  erisaEligible: boolean;
+  iraEligible: boolean;
+  nonUsInvestorsPermitted: boolean;
+  taxExemptEligible: boolean;
+  transferrable: boolean;
+  gpConsentRequired: boolean;
+  rofrApplies: boolean;
+  lockupMonths: number | null;
+  terms: FundTerms | null;
+  shareClasses: ShareClassItem[];
   documentTemplates: DocumentTemplateListItem[];
   advisorEntitlements: FundAdvisorEntitlement[];
 }
@@ -121,7 +197,18 @@ export interface DocumentTemplateDetail {
   originalFilename: string;
   status: DocumentTemplateStatus;
   uploadedAt: string;
+  legalRejectionReason: string | null;
+  legalReviewedAt: string | null;
   fieldMappings: FieldMapping[];
+}
+
+// --- Phase 8: fund_legal review queue ---
+
+export interface LegalQueueItem {
+  id: string;
+  originalFilename: string;
+  uploadedAt: string;
+  fund: { id: string; name: string; sponsorName: string };
 }
 
 export interface CanonicalField {
@@ -205,6 +292,10 @@ export interface InvestorDetail {
   accreditationAttestedAt: string | null;
   qualifiedPurchaserBasis: QualifiedPurchaserBasis | null;
   qpAttestedAt: string | null;
+  isErisaPlan: boolean;
+  isIraAccount: boolean;
+  isTaxExempt: boolean;
+  taxResidencyCountry: string | null;
   createdAt: string;
   principals: InvestorPrincipal[];
   taxProfile: InvestorTaxProfile | null;
@@ -227,6 +318,13 @@ export interface AvailableFund {
   closeDate: string | null;
   exclusion: FundExclusion | null;
   domicile: string | null;
+  vintageYear: number | null;
+  assetClass: FundAssetClass | null;
+  strategy: FundStrategyType | null;
+  managementFeeRate: string | null;
+  carriedInterestRate: string | null;
+  hurdleRate: string | null;
+  shareClasses: ShareClassItem[];
   hasTemplate: boolean;
   templateUnmappedFieldCount: number;
 }
@@ -263,6 +361,11 @@ export interface SubscriptionDocumentItem {
   unresolvedFields: { anvilFieldKey: string; canonicalField: string; reason: string }[];
 }
 
+export interface SubscriptionParticipantItem {
+  role: TenantType;
+  tenant: { id: string; name: string; type: TenantType };
+}
+
 export interface SubscriptionDetail {
   id: string;
   status: SubscriptionStatus;
@@ -272,10 +375,20 @@ export interface SubscriptionDetail {
   investorDisplayName: string;
   advisorFirm: string;
   investor: { id: string };
-  fund: { id: string; name: string; legalName: string | null };
+  fund: { id: string; name: string; legalName: string | null; terms: FundTerms | null };
+  shareClass: ShareClassItem | null;
   documents: SubscriptionDocumentItem[];
   signatures: SignatureRequestItem[];
+  participants: SubscriptionParticipantItem[];
   allowedNext: SubscriptionStatus[];
+}
+
+// --- Phase 8: custodian attach + funding confirmation ---
+
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 // --- Qualified purchaser eligibility (ICA §2(a)(51)) ---
@@ -339,4 +452,46 @@ export interface HolderCapacity {
   cap: number | null;
   remaining: number | null;
   atCapacity: boolean;
+}
+
+// --- Phase 8: LP view-only access links ---
+
+export type AccessLinkStatus = "active" | "expired" | "revoked";
+
+export interface AccessLinkItem {
+  id: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastAccessedAt: string | null;
+  createdAt: string;
+  createdBy: string;
+  status: AccessLinkStatus;
+}
+
+export interface CreatedAccessLink {
+  id: string;
+  token: string;
+  expiresAt: string;
+}
+
+export interface LpSubscriptionItem {
+  id: string;
+  status: SubscriptionStatus;
+  amount: string | null;
+  fundName: string;
+  createdAt: string;
+}
+
+export interface LpPositionItem {
+  id: string;
+  fundName: string;
+  commitmentAmount: string;
+  fundedAmount: string;
+  status: PositionStatus;
+}
+
+export interface LpView {
+  investor: { displayName: string; type: InvestorType };
+  subscriptions: LpSubscriptionItem[];
+  positions: LpPositionItem[];
 }

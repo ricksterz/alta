@@ -33,6 +33,8 @@ export interface TransferComplianceInput {
     id: string;
     name: string;
     exclusion: FundExclusion | null;
+    /** Defaults to permitted when absent — see Fund.transferrable. */
+    transferrable?: boolean;
   };
   /** True when the transferee already holds a position in this fund. */
   transfereeIsExistingHolder: boolean;
@@ -51,6 +53,18 @@ export async function checkTransferCompliance(
   now: Date
 ): Promise<TransferComplianceResult> {
   const reasons: TransferComplianceResult["reasons"] = [];
+
+  // 0. The fund's governing documents may prohibit transfer outright — the
+  // LPA question that comes before "is this transferee eligible" even gets
+  // asked. Checked here, in the oracle, rather than by the route: this is a
+  // compliance fact about the fund, the same category as the exclusion and
+  // holder-cap checks below.
+  if (input.fund.transferrable === false) {
+    reasons.push({
+      code: "fund_not_transferrable",
+      message: `${input.fund.name}'s governing documents do not permit transfer of interests.`,
+    });
+  }
 
   // 1. The transferee must independently satisfy the fund's investor
   //    eligibility bar. Receiving by transfer is not a way around it.

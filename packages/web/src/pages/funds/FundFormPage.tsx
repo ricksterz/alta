@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../../lib/api";
-import type { FundStructure, FundVehicleType } from "../../lib/types";
+import type { FundAssetClass, FundStrategyType, FundStructure, FundVehicleType } from "../../lib/types";
 
 function inputClass() {
   return "w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none";
@@ -19,6 +19,9 @@ export function FundFormPage() {
   const [minInvestment, setMinInvestment] = useState("");
   const [closeDate, setCloseDate] = useState("");
   const [gpSignatoryName, setGpSignatoryName] = useState("");
+  const [vintageYear, setVintageYear] = useState("");
+  const [assetClass, setAssetClass] = useState<FundAssetClass | "">("");
+  const [strategy, setStrategy] = useState<FundStrategyType | "">("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,6 +38,9 @@ export function FundFormPage() {
         minInvestment: minInvestment ? Number(minInvestment) : undefined,
         closeDate: structure === "drawdown" && closeDate ? new Date(closeDate).toISOString() : undefined,
         gpSignatoryName: gpSignatoryName || undefined,
+        vintageYear: vintageYear ? Number(vintageYear) : undefined,
+        assetClass: assetClass || undefined,
+        strategy: strategy || undefined,
       });
       navigate(`/funds/${fund.id}`);
     } catch (err) {
@@ -89,6 +95,55 @@ export function FundFormPage() {
             >
               <option value="drawdown">Drawdown</option>
               <option value="continuous">Continuous</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className={labelClass()}>Vintage year</label>
+            <input
+              type="number"
+              className={inputClass()}
+              placeholder="2026"
+              value={vintageYear}
+              onChange={(e) => setVintageYear(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={labelClass()}>Asset class</label>
+            <select
+              className={inputClass()}
+              value={assetClass}
+              onChange={(e) => setAssetClass(e.target.value as FundAssetClass | "")}
+            >
+              <option value="">Select…</option>
+              <option value="private_equity">Private equity</option>
+              <option value="venture_capital">Venture capital</option>
+              <option value="private_credit">Private credit</option>
+              <option value="real_estate">Real estate</option>
+              <option value="infrastructure">Infrastructure</option>
+              <option value="hedge_fund">Hedge fund</option>
+              <option value="fund_of_funds">Fund of funds</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass()}>Strategy</label>
+            <select
+              className={inputClass()}
+              value={strategy}
+              onChange={(e) => setStrategy(e.target.value as FundStrategyType | "")}
+            >
+              <option value="">Select…</option>
+              <option value="buyout">Buyout</option>
+              <option value="growth_equity">Growth equity</option>
+              <option value="venture">Venture</option>
+              <option value="credit">Credit</option>
+              <option value="real_estate">Real estate</option>
+              <option value="infrastructure">Infrastructure</option>
+              <option value="secondaries">Secondaries</option>
+              <option value="fund_of_funds">Fund of funds</option>
+              <option value="other">Other</option>
             </select>
           </div>
         </div>

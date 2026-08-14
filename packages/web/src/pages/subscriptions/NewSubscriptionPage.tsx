@@ -25,6 +25,7 @@ export function NewSubscriptionPage() {
   const [funds, setFunds] = useState<AvailableFund[]>([]);
   const [investorId, setInvestorId] = useState(presetInvestorId);
   const [fundId, setFundId] = useState("");
+  const [shareClassId, setShareClassId] = useState("");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -38,8 +39,10 @@ export function NewSubscriptionPage() {
   }, []);
 
   const selectedFund = funds.find((f) => f.id === fundId);
+  const selectedShareClass = selectedFund?.shareClasses.find((c) => c.id === shareClassId);
   const selectedInvestor = investors.find((i) => i.id === investorId);
   const investorNotReady = selectedInvestor && !selectedInvestor.accreditationBasis;
+  const effectiveMinInvestment = selectedShareClass?.minInvestment ?? selectedFund?.minInvestment ?? null;
 
   // Ask the server rather than reimplementing the rules here — the same engine
   // that will authorize the POST, so the warning can't disagree with the block.
@@ -69,6 +72,7 @@ export function NewSubscriptionPage() {
         investorId,
         fundId,
         amount: Number(amount),
+        shareClassId: shareClassId || undefined,
       });
       navigate(`/subscriptions/${sub.id}`);
     } catch (err) {
@@ -127,7 +131,10 @@ export function NewSubscriptionPage() {
             <select
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               value={fundId}
-              onChange={(e) => setFundId(e.target.value)}
+              onChange={(e) => {
+                setFundId(e.target.value);
+                setShareClassId("");
+              }}
             >
               <option value="">Select a fund…</option>
               {funds.map((f) => (
@@ -138,19 +145,47 @@ export function NewSubscriptionPage() {
             </select>
           )}
 
+          {selectedFund && selectedFund.shareClasses.length > 0 && (
+            <div className="mt-2">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Share class</label>
+              <select
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                value={shareClassId}
+                onChange={(e) => setShareClassId(e.target.value)}
+              >
+                <option value="">Fund's default terms</option>
+                {selectedFund.shareClasses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.managementFeeRate && ` · ${(Number(c.managementFeeRate) * 100).toFixed(2)}% mgmt fee`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {selectedFund && (
             <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <div>{selectedFund.legalName ?? selectedFund.name}</div>
               <div className="mt-1">
                 {selectedFund.structure} ·{" "}
-                {selectedFund.minInvestment
-                  ? `min ${Number(selectedFund.minInvestment).toLocaleString("en-US", {
+                {effectiveMinInvestment
+                  ? `min ${Number(effectiveMinInvestment).toLocaleString("en-US", {
                       style: "currency",
                       currency: "USD",
                       maximumFractionDigits: 0,
                     })}`
                   : "no minimum"}
               </div>
+              {(selectedFund.managementFeeRate || selectedFund.carriedInterestRate) && (
+                <div className="mt-1">
+                  {selectedFund.managementFeeRate &&
+                    `${(Number(selectedShareClass?.managementFeeRate ?? selectedFund.managementFeeRate) * 100).toFixed(2)}% management fee`}
+                  {selectedFund.carriedInterestRate &&
+                    ` · ${(Number(selectedShareClass?.carriedInterestRate ?? selectedFund.carriedInterestRate) * 100).toFixed(2)}% carry`}
+                  {selectedFund.hurdleRate && ` · ${(Number(selectedFund.hurdleRate) * 100).toFixed(2)}% hurdle`}
+                </div>
+              )}
               {!selectedFund.hasTemplate && (
                 <div className="mt-1 text-amber-700">
                   This fund has no subscription document template yet — the sponsor must upload one first.
@@ -194,9 +229,6 @@ export function NewSubscriptionPage() {
         )}
 
         <div>
-        </div>
-
-        <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">Subscription amount</label>
           <input
             type="number"
@@ -205,11 +237,11 @@ export function NewSubscriptionPage() {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
-          {selectedFund?.minInvestment && Number(amount) > 0 &&
-            Number(amount) < Number(selectedFund.minInvestment) && (
+          {effectiveMinInvestment && Number(amount) > 0 &&
+            Number(amount) < Number(effectiveMinInvestment) && (
               <p className="mt-1 text-xs text-amber-700">
                 Below this fund's minimum of{" "}
-                {Number(selectedFund.minInvestment).toLocaleString("en-US", {
+                {Number(effectiveMinInvestment).toLocaleString("en-US", {
                   style: "currency",
                   currency: "USD",
                   maximumFractionDigits: 0,

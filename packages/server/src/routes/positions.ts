@@ -203,11 +203,27 @@ positionsRouter.post("/:id/transfers", async (req, res) => {
         accreditationBasis: transferee.accreditationBasis,
         qualifiedPurchaserBasis: transferee.qualifiedPurchaserBasis,
       },
-      fund: { id: position.fundId, name: position.fund.name, exclusion: position.fund.exclusion },
+      fund: {
+        id: position.fundId,
+        name: position.fund.name,
+        exclusion: position.fund.exclusion,
+        transferrable: position.fund.transferrable,
+      },
       transfereeIsExistingHolder: Boolean(existingHolding),
     },
     new Date()
   );
+
+  // A failed compliance check rejects immediately. A passing one either
+  // needs GP consent (the default, required by nearly every LPA) or, for a
+  // fund that explicitly waives it, is approved outright — the same
+  // exclusivity principle as effectiveActor elsewhere: the fund's own terms
+  // decide who acts next, not a hardcoded assumption.
+  const status = !compliance.allowed
+    ? "rejected"
+    : position.fund.gpConsentRequired
+      ? "pending_gp_consent"
+      : "approved";
 
   const transfer = await ctx.db.transferRequest.create({
     data: {
@@ -217,14 +233,12 @@ positionsRouter.post("/:id/transfers", async (req, res) => {
       positionId: position.id,
       toInvestorId: transferee.id,
       amount: parsed.data.amount,
-      // A failed compliance check rejects immediately; a passing one still
-      // needs GP consent, which nearly every LPA requires for transfers.
-      status: compliance.allowed ? "pending_gp_consent" : "rejected",
+      status,
       eligibilitySnapshot: compliance as unknown as object,
       rejectionReason: compliance.allowed
         ? null
         : compliance.reasons.map((r) => r.message).join(" "),
-      decidedAt: compliance.allowed ? null : new Date(),
+      decidedAt: status === "pending_gp_consent" ? null : new Date(),
     },
   });
 

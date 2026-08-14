@@ -8,8 +8,12 @@ import { prisma } from "./client.js";
 //
 // Strategy:
 //  - Every read/bulk-write operation gets the model's tenant-owning column
+//    (or, for a participant-scoped model, a relation filter — see below)
 //    merged into its `where` automatically.
 //  - `create`/`createMany` get that column merged into `data` automatically.
+//    Participant mode has no create counterpart — nothing in this codebase
+//    creates a Subscription as a fund_admin or custodian, and the extension
+//    throws rather than silently doing nothing if that ever changes.
 //  - Operations whose `where` must be a bare unique selector (findUnique,
 //    update, delete, upsert) are disabled outright — Prisma won't let us
 //    add a non-unique filter to those, so allowing them through unscoped
@@ -18,103 +22,116 @@ import { prisma } from "./client.js";
 //  - Tenant itself is exempt (it has no tenant-owning column — it IS the
 //    tenant).
 //
-// Three ownership shapes, resolved per model by tenantColumnFor():
+// Five ownership shapes, resolved per (model, tenantType) by scopeFor():
 //
 //  1. Advisor-owned (the default): scoped by `tenantId`. Investor, Session,
 //     AuditEvent, etc.
-//  2. Sponsor-owned: scoped by `sponsorTenantId`. Fund, DocumentTemplate,
-//     FieldMapping, FundAdvisorEntitlement. A deliberately different column
-//     name so code can't accidentally apply an advisor tenant's filter to
-//     sponsor-owned data or vice versa.
-//  3. Multi-owned: carries SEVERAL owning columns, and which one applies
-//     depends on who is asking. A Subscription belongs to the advisor tenant
-//     that created it, the sponsor tenant whose fund it subscribes to, and —
-//     when one is engaged — the fund administrator reviewing it. All three
-//     must see it; none may see the others' unrelated subscriptions. This is
-//     the shape that needs the caller's tenant TYPE, not just their id, which
-//     is why scopedClient takes both.
+//  2. Sponsor-owned: scoped by `sponsorTenantId`. Fund, FieldMapping,
+//     FundAdvisorEntitlement. A deliberately different column name so code
+//     can't accidentally apply an advisor tenant's filter to sponsor-owned
+//     data or vice versa.
+//  3. Multi-owned by fixed column: a small, FIXED set of parties, each with
+//     its own column. Subscription's advisor (tenantId) and sponsor
+//     (sponsorTenantId) are the only two parties present on every
+//     subscription, which is what makes a column defensible for them.
+//  4. Participant-scoped: a VARIABLE, optional set of parties — fund admin,
+//     custodian, whoever gets added next — tracked in
+//     SubscriptionParticipant rather than as more nullable columns. Visibility
+//     resolves to "does a participant row exist for me", a relation filter
+//     (`participants: { some: { tenantId, role } } }`) rather than a flat
+//     column comparison. This is the shape that replaced a growing pile of
+//     nullable *TenantId columns once a second optional party (custodian)
+//     showed up alongside the first (fund admin) — see the schema comment on
+//     SubscriptionParticipant for the full reasoning.
+//  5. Owned via a parent's column: the model itself carries no tenant column
+//     for this party, but its parent does, and the relation is to-one so no
+//     `some` wrapper is needed. DocumentTemplate has no fundLegalTenantId of
+//     its own — Fund does — so fund_legal's visibility is
+//     `{ fund: { fundLegalTenantId } }`. Unlike participant mode this is a
+//     FIXED single party (a fund has at most one law firm engaged here), it
+//     just happens to live one hop away.
 //
-// The multi-owned case is the one worth being careful about: getting it wrong
-// in the permissive direction leaks one advisor firm's book of business to
-// another, so the mapping below is explicit per model rather than inferred
-// from which columns happen to exist.
-//
-// Note the fund_admin asymmetry. Subscription.fundAdminTenantId is NULLABLE —
-// most funds have no admin on-platform — so a fund_admin caller filtering on
-// it correctly sees only the subscriptions actually routed to them. Models
-// with no fund-admin column at all (Position, TransferRequest) are simply not
-// visible to fund_admin tenants, which is the intended behaviour: an
-// administrator reviews subscriptions, it does not hold the register.
+// Getting any of this wrong in the permissive direction leaks one tenant's
+// data to another, so the mapping below is explicit per (model, tenantType)
+// rather than inferred from which columns or relations happen to exist.
 
 const TENANT_EXEMPT_MODELS = new Set(["Tenant"]);
 
 const SPONSOR_OWNED_MODELS = new Set([
   "Fund",
   "FundAdvisorEntitlement",
-  "DocumentTemplate",
   "FieldMapping",
   "SignatureBlock",
   "FundClose",
-  "CapitalCall",
+  "FundTerms",
+  "ShareClass",
 ]);
 
-// Per-model column to filter on, by caller tenant type. A model absent from a
-// given tenant type's mapping is invisible to that tenant type.
-const MULTI_OWNED_MODELS: Record<string, Partial<Record<TenantType, string>>> = {
+type Scope =
+  | { kind: "column"; column: string }
+  | { kind: "participant"; relation: string; role: TenantType }
+  | { kind: "toOneRelation"; relation: string; column: string };
+
+// Per-model column (or participant relation) to filter on, by caller tenant
+// type. A model/tenantType combination absent here is invisible to that
+// tenant type — see ModelNotVisibleError below.
+const MULTI_OWNED_MODELS: Record<string, Partial<Record<TenantType, Scope>>> = {
   Subscription: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
-    fund_admin: "fundAdminTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
+    fund_admin: { kind: "participant", relation: "participants", role: "fund_admin" },
+    custodian: { kind: "participant", relation: "participants", role: "custodian" },
+  },
+  DocumentTemplate: {
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
+    fund_legal: { kind: "toOneRelation", relation: "fund", column: "fundLegalTenantId" },
   },
   SubscriptionDocument: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   SignatureRequest: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   SignatureBlockFulfillment: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   Position: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   TransferRequest: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
-  // An advisor firm must see what its clients owe; the sponsor must see what
-  // it is owed. A fund administrator has no column here — capital call
-  // administration is a separate engagement from subscription review.
   CapitalCallAllocation: {
-    advisor_firm: "tenantId",
-    sponsor_firm: "sponsorTenantId",
+    advisor_firm: { kind: "column", column: "tenantId" },
+    sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
 };
 
-/** Thrown when a tenant type queries a model it has no ownership column on. */
+/** Thrown when a tenant type queries a model it has no ownership scope for. */
 export class ModelNotVisibleError extends Error {}
 
-function tenantColumnFor(model: string, tenantType: TenantType): string {
+function scopeFor(model: string, tenantType: TenantType): Scope {
   const multi = MULTI_OWNED_MODELS[model];
   if (multi) {
-    const column = multi[tenantType];
-    if (!column) {
+    const scope = multi[tenantType];
+    if (!scope) {
       throw new ModelNotVisibleError(
         `${model} is not visible to a ${tenantType} tenant: it has no ownership ` +
-          `column for that tenant type. This is a deliberate boundary, not a bug — ` +
-          `if this access is intended, add the column and map it here.`
+          `scope for that tenant type. This is a deliberate boundary, not a bug — ` +
+          `if this access is intended, add it to MULTI_OWNED_MODELS.`
       );
     }
-    return column;
+    return scope;
   }
   if (SPONSOR_OWNED_MODELS.has(model)) {
-    return "sponsorTenantId";
+    return { kind: "column", column: "sponsorTenantId" };
   }
-  return "tenantId";
+  return { kind: "column", column: "tenantId" };
 }
 
 const BANNED_OPERATIONS = new Set([
@@ -152,36 +169,52 @@ export function scopedClient(tenantId: string, tenantType: TenantType) {
           if (TENANT_EXEMPT_MODELS.has(model)) {
             return query(args);
           }
-          const column = tenantColumnFor(model, tenantType);
+          const scope = scopeFor(model, tenantType);
+          const label =
+            scope.kind === "column"
+              ? scope.column
+              : `${scope.relation}.${scope.kind === "participant" ? "tenantId" : scope.column}`;
 
           if (BANNED_OPERATIONS.has(operation)) {
             throw new Error(
               `${model}.${operation} is disabled on the tenant-scoped client: its ` +
                 `\`where\` must be a bare unique selector, which can't be safely ` +
                 `constrained to a tenant. Use the *Many equivalent with an explicit ` +
-                `{ id, ${column} } filter, or findFirst, instead.`
+                `{ id, ${label} } filter, or findFirst, instead.`
             );
           }
 
           if (WHERE_SCOPED_OPERATIONS.has(operation)) {
             const scoped = args as { where?: Record<string, unknown> };
-            scoped.where = { ...scoped.where, [column]: tenantId };
+            scoped.where = {
+              ...scoped.where,
+              ...(scope.kind === "column"
+                ? { [scope.column]: tenantId }
+                : scope.kind === "participant"
+                  ? { [scope.relation]: { some: { tenantId, role: scope.role } } }
+                  : { [scope.relation]: { [scope.column]: tenantId } }),
+            };
             return query(scoped);
           }
 
-          if (DATA_SCOPED_CREATE_OPERATIONS.has(operation)) {
-            const scoped = args as { data: Record<string, unknown> };
-            scoped.data = { ...scoped.data, [column]: tenantId };
-            return query(scoped);
-          }
-
-          if (DATA_SCOPED_CREATE_MANY_OPERATIONS.has(operation)) {
+          if (
+            DATA_SCOPED_CREATE_OPERATIONS.has(operation) ||
+            DATA_SCOPED_CREATE_MANY_OPERATIONS.has(operation)
+          ) {
+            if (scope.kind !== "column") {
+              throw new Error(
+                `${model}.${operation} is not supported for a ${scope.kind}-scoped ` +
+                  `tenant type (${tenantType}). Nothing in this codebase should be ` +
+                  `creating a ${model} as a ${tenantType} — if that changed, this ` +
+                  `needs a real design, not a default.`
+              );
+            }
             const scoped = args as {
               data: Record<string, unknown> | Record<string, unknown>[];
             };
             scoped.data = Array.isArray(scoped.data)
-              ? scoped.data.map((row) => ({ ...row, [column]: tenantId }))
-              : { ...scoped.data, [column]: tenantId };
+              ? scoped.data.map((row) => ({ ...row, [scope.column]: tenantId }))
+              : { ...scoped.data, [scope.column]: tenantId };
             return query(scoped);
           }
 

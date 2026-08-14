@@ -26,6 +26,8 @@ export interface TransitionSubject {
   status: SubscriptionStatus;
   /** Null when no fund administrator is engaged for this fund. */
   fundAdminTenantId?: string | null;
+  /** Null when no custodian has been attached to this subscription. */
+  custodianTenantId?: string | null;
 }
 
 export const TRANSITIONS: TransitionRule[] = [
@@ -77,7 +79,12 @@ export const TRANSITIONS: TransitionRule[] = [
   {
     from: "accepted",
     to: "funded",
-    actors: ["fund_admin", "sponsor_firm"],
+    // Whichever party actually watches capital land takes this exclusively:
+    // an attached custodian outranks the fund admin, who outranks the
+    // sponsor's own say — see effectiveActor. Custodian involvement is
+    // per-subscription (an advisor attaches one, or doesn't), unlike
+    // fund_admin which follows from the fund.
+    actors: ["custodian", "fund_admin", "sponsor_firm"],
     label: "Capital received — funded",
   },
 ];
@@ -94,20 +101,25 @@ const ACTOR_LABELS: Record<TenantType, string> = {
   advisor_firm: "advisor firm",
   sponsor_firm: "fund sponsor",
   fund_admin: "fund administrator",
+  fund_legal: "fund counsel",
+  custodian: "custodian",
 };
 
 /**
  * Resolves which single tenant type may perform a transition on THIS
- * subscription. For steps listing both fund_admin and sponsor_firm, an engaged
- * administrator takes exclusive responsibility — otherwise both could act and
- * the record would not show who owns the review.
+ * subscription. For a step listing more than one actor, whichever is engaged
+ * takes exclusive responsibility, in the order listed on the rule —
+ * otherwise more than one party could act and the record would not show who
+ * actually owns the step.
  */
 export function effectiveActor(
   rule: TransitionRule,
   subject: TransitionSubject
 ): TenantType {
   if (rule.actors.length === 1) return rule.actors[0];
-  return subject.fundAdminTenantId ? "fund_admin" : "sponsor_firm";
+  if (rule.actors.includes("custodian") && subject.custodianTenantId) return "custodian";
+  if (rule.actors.includes("fund_admin") && subject.fundAdminTenantId) return "fund_admin";
+  return "sponsor_firm";
 }
 
 export function assertTransition(

@@ -34,10 +34,31 @@ export interface EligibilityInput {
     type: InvestorType;
     accreditationBasis: string | null;
     qualifiedPurchaserBasis: QualifiedPurchaserBasis | null;
+    /**
+     * Beyond accreditation/QP. All optional and default to "no" — an
+     * investor is not an ERISA plan, IRA, or tax-exempt entity unless
+     * recorded as one, and existing callers built before these existed
+     * still type-check unchanged.
+     */
+    isErisaPlan?: boolean;
+    isIraAccount?: boolean;
+    isTaxExempt?: boolean;
+    /** Null/absent means "not yet captured", not "US" — see Investor.taxResidencyCountry. */
+    taxResidencyCountry?: string | null;
   };
   fund: {
     exclusion: FundExclusion | null;
     name: string;
+    /**
+     * Eligibility restrictions beyond accreditation/QP. All default to
+     * permitted (true) when absent, matching Fund's own column defaults —
+     * a fund that predates these columns, or a caller that doesn't pass
+     * them, must not suddenly start blocking every subscription.
+     */
+    erisaEligible?: boolean;
+    iraEligible?: boolean;
+    nonUsInvestorsPermitted?: boolean;
+    taxExemptEligible?: boolean;
   };
   /**
    * Register-derived holder capacity, when the caller has looked it up.
@@ -164,5 +185,43 @@ export function checkEligibility({
     });
   }
 
+  // --- Eligibility beyond accreditation/QP. Each defaults to permitted when
+  // the fund-side flag is absent, and each only fires when the investor-side
+  // fact is affirmatively true/set — an unknown fact must not manufacture a
+  // blocker, the same principle as the unknown-exclusion warning above.
+  if (fund.erisaEligible === false && investor.isErisaPlan) {
+    blockers.push({
+      code: "erisa_not_permitted",
+      message: `${fund.name} does not accept ERISA plan investors.`,
+    });
+  }
+
+  if (fund.iraEligible === false && investor.isIraAccount) {
+    blockers.push({
+      code: "ira_not_permitted",
+      message: `${fund.name} does not accept investments through an IRA.`,
+    });
+  }
+
+  if (fund.taxExemptEligible === false && investor.isTaxExempt) {
+    blockers.push({
+      code: "tax_exempt_not_permitted",
+      message: `${fund.name} does not accept tax-exempt investors.`,
+    });
+  }
+
+  if (
+    fund.nonUsInvestorsPermitted === false &&
+    investor.taxResidencyCountry &&
+    !US_COUNTRY_TOKENS.has(investor.taxResidencyCountry.trim().toUpperCase())
+  ) {
+    blockers.push({
+      code: "non_us_not_permitted",
+      message: `${fund.name} does not accept investors who are tax resident outside the US.`,
+    });
+  }
+
   return { eligible: blockers.length === 0, blockers, warnings };
 }
+
+const US_COUNTRY_TOKENS = new Set(["US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"]);

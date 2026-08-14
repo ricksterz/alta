@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../auth/AuthContext";
 import { StatusBadge } from "../../components/StatusBadge";
-import type { SignatureRequestItem, SubscriptionDetail } from "../../lib/types";
+import type { SignatureRequestItem, SubscriptionDetail, TenantSummary } from "../../lib/types";
 
 function SignatureRow({
   signature,
@@ -98,6 +98,65 @@ function SignatureRow({
   );
 }
 
+// onAttach is the page's act() wrapper — it never rejects, it sets the
+// page-level error banner instead, so there's no local error state to catch.
+function AttachCustodian({ onAttach }: { onAttach: (custodianTenantId: string) => Promise<void> }) {
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<TenantSummary[]>([]);
+
+  useEffect(() => {
+    if (search.trim().length === 0) {
+      setResults([]);
+      return;
+    }
+    const handle = setTimeout(() => {
+      api
+        .get<TenantSummary[]>(`/subscriptions/custodian-tenants?search=${encodeURIComponent(search)}`)
+        .then(setResults)
+        .catch(() => setResults([]));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Attach a custodian
+      </h3>
+      <p className="mb-2 text-xs text-slate-400">
+        Once attached, the custodian confirms funding instead of the fund sponsor or administrator.
+      </p>
+      <div className="relative">
+        <input
+          className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          placeholder="Search custodians…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {results.length > 0 && (
+          <ul className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow-sm">
+            {results.map((t) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onAttach(t.id);
+                    setSearch("");
+                    setResults([]);
+                  }}
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                >
+                  {t.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SubscriptionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -109,6 +168,8 @@ export function SubscriptionDetailPage() {
 
   const isSponsor = user?.tenantType === "sponsor_firm";
   const isFundAdmin = user?.tenantType === "fund_admin";
+  const isCustodian = user?.tenantType === "custodian";
+  const isAdvisor = user?.tenantType === "advisor_firm";
   // Both sponsor and fund admin view a subscription as a reviewer rather than
   // its originator: they see the advisor firm, and they get the decision
   // controls the state machine permits them.
@@ -142,6 +203,12 @@ export function SubscriptionDetailPage() {
 
   const doc = sub.documents[0];
   const unresolved = doc?.unresolvedFields ?? [];
+  const custodianParticipant = sub.participants.find((p) => p.role === "custodian");
+  const fundAdminParticipant = sub.participants.find((p) => p.role === "fund_admin");
+  // Once a custodian is attached it exclusively confirms funding — see
+  // subscriptionStatus.ts's effectiveActor — so the sponsor/fund-admin panel
+  // hides that action rather than offering a button that would 403.
+  const fundingIsSponsorSide = !custodianParticipant;
 
   return (
     <div>
@@ -157,9 +224,19 @@ export function SubscriptionDetailPage() {
           <h1 className="text-2xl font-semibold text-slate-900">{sub.investorDisplayName}</h1>
           <p className="text-sm text-slate-500">
             {sub.fund.name}
+            {sub.shareClass && ` (${sub.shareClass.name})`}
             {sub.amount && ` · ${Number(sub.amount).toLocaleString("en-US", { style: "currency", currency: "USD" })}`}
             {isReviewer && ` · via ${sub.advisorFirm}`}
           </p>
+          {(sub.shareClass?.managementFeeRate ?? sub.fund.terms?.managementFeeRate) && (
+            <p className="mt-1 text-xs text-slate-400">
+              {(Number(sub.shareClass?.managementFeeRate ?? sub.fund.terms?.managementFeeRate) * 100).toFixed(2)}%
+              management fee
+              {sub.fund.terms?.carriedInterestRate &&
+                ` · ${(Number(sub.shareClass?.carriedInterestRate ?? sub.fund.terms.carriedInterestRate) * 100).toFixed(2)}% carry`}
+              {sub.fund.terms?.hurdleRate && ` · ${(Number(sub.fund.terms.hurdleRate) * 100).toFixed(2)}% hurdle`}
+            </p>
+          )}
         </div>
         <StatusBadge status={sub.status} />
       </div>
@@ -296,7 +373,7 @@ export function SubscriptionDetailPage() {
                     Accept
                   </button>
                 )}
-                {sub.allowedNext.includes("funded") && (
+                {sub.allowedNext.includes("funded") && fundingIsSponsorSide && (
                   <button
                     type="button"
                     disabled={busy}
@@ -307,6 +384,14 @@ export function SubscriptionDetailPage() {
                   >
                     Mark funded
                   </button>
+                )}
+                {sub.allowedNext.includes("funded") && !fundingIsSponsorSide && (
+                  <span
+                    className="rounded bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-400"
+                    title={`Attached custodian ${custodianParticipant?.tenant.name} confirms funding`}
+                  >
+                    Awaiting custodian
+                  </span>
                 )}
                 {sub.allowedNext.includes("rejected") && (
                   <button
@@ -343,6 +428,64 @@ export function SubscriptionDetailPage() {
                     Confirm reject
                   </button>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* --- Custodian's own confirm-funding action --- */}
+          {isCustodian && (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Custodian
+              </h3>
+              {sub.allowedNext.includes("funded") ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => act(() => api.post(`/subscriptions/${sub.id}/confirm-funding`))}
+                  className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+                >
+                  {busy ? "Confirming…" : "Confirm funding received"}
+                </button>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  {sub.status === "funded" ? "Funding already confirmed." : "Not yet ready to fund."}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* --- Participants: fund admin / custodian, and the advisor's attach action --- */}
+          {(fundAdminParticipant || custodianParticipant || isAdvisor) && (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Other participants
+              </h3>
+              <ul className="space-y-1 text-sm text-slate-700">
+                {fundAdminParticipant && (
+                  <li>
+                    {fundAdminParticipant.tenant.name}{" "}
+                    <span className="text-xs text-slate-400">fund administrator</span>
+                  </li>
+                )}
+                {custodianParticipant && (
+                  <li>
+                    {custodianParticipant.tenant.name}{" "}
+                    <span className="text-xs text-slate-400">custodian</span>
+                  </li>
+                )}
+                {!fundAdminParticipant && !custodianParticipant && (
+                  <li className="text-slate-400">None attached.</li>
+                )}
+              </ul>
+              {isAdvisor && !custodianParticipant && (
+                <AttachCustodian
+                  onAttach={(custodianTenantId) =>
+                    act(() =>
+                      api.post(`/subscriptions/${sub.id}/custodian`, { custodianTenantId })
+                    )
+                  }
+                />
               )}
             </div>
           )}

@@ -10,8 +10,11 @@ import {
 import { qpBasesForInvestorType } from "../workflow/eligibility.js";
 import { encryptOptional, maskTaxId } from "../crypto/fieldEncryption.js";
 import { requireAdvisorTenant, requireAuth } from "../middleware/requireAuth.js";
+import { generateAccessToken } from "../auth/accessLinks.js";
 import { audit } from "../audit.js";
 import { upload } from "../upload.js";
+
+const ACCESS_LINK_TTL_DAYS = 30;
 
 export const investorsRouter = Router();
 investorsRouter.use(requireAuth, requireAdvisorTenant);
@@ -111,6 +114,10 @@ const createInvestorSchema = z.object({
   state: z.string().optional(),
   postalCode: z.string().optional(),
   country: z.string().optional(),
+  isErisaPlan: z.boolean().optional(),
+  isIraAccount: z.boolean().optional(),
+  isTaxExempt: z.boolean().optional(),
+  taxResidencyCountry: z.string().optional(),
   principals: z.array(principalSchema).min(1),
 });
 
@@ -362,6 +369,98 @@ investorsRouter.post("/:id/submit", async (req, res) => {
     action: "investor.onboarding_submitted",
     entityType: "Investor",
     entityId: investor.id,
+  });
+
+  res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// GET /investors/:id/access-links — list, most recent first. No token values
+// here — those exist only in the create response, once, like an API key.
+// ---------------------------------------------------------------------------
+investorsRouter.get("/:id/access-links", async (req, res) => {
+  const ctx = req.ctx!;
+  const investor = await ctx.db.investor.findFirst({ where: { id: req.params.id } });
+  if (!investor) {
+    return res.status(404).json({ error: "Investor not found" });
+  }
+
+  const links = await ctx.db.investorAccessLink.findMany({
+    where: { investorId: investor.id },
+    orderBy: { createdAt: "desc" },
+    include: { createdByRep: { select: { firstName: true, lastName: true } } },
+  });
+
+  res.json(
+    links.map((l) => ({
+      id: l.id,
+      expiresAt: l.expiresAt,
+      revokedAt: l.revokedAt,
+      lastAccessedAt: l.lastAccessedAt,
+      createdAt: l.createdAt,
+      createdBy: `${l.createdByRep.firstName} ${l.createdByRep.lastName}`,
+      status: l.revokedAt ? "revoked" : l.expiresAt < new Date() ? "expired" : "active",
+    }))
+  );
+});
+
+// ---------------------------------------------------------------------------
+// POST /investors/:id/access-links — mint a new view-only link. The raw
+// token is returned exactly once; only its hash is ever stored, the same
+// discipline as Session.
+// ---------------------------------------------------------------------------
+investorsRouter.post("/:id/access-links", async (req, res) => {
+  const ctx = req.ctx!;
+  const investor = await ctx.db.investor.findFirst({ where: { id: req.params.id } });
+  if (!investor) {
+    return res.status(404).json({ error: "Investor not found" });
+  }
+
+  const { token, tokenHash } = generateAccessToken();
+  const expiresAt = new Date(Date.now() + ACCESS_LINK_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  const link = await ctx.db.investorAccessLink.create({
+    data: {
+      tenantId: ctx.tenantId,
+      investorId: investor.id,
+      tokenHash,
+      expiresAt,
+      createdByRepId: ctx.advisorRepId,
+    },
+  });
+
+  await audit(ctx.db, ctx.tenantId, {
+    actorType: "advisor_rep",
+    actorId: ctx.advisorRepId,
+    action: "investor.access_link_created",
+    entityType: "Investor",
+    entityId: investor.id,
+    metadata: { accessLinkId: link.id, expiresAt },
+  });
+
+  res.status(201).json({ id: link.id, token, expiresAt });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /investors/:id/access-links/:linkId — revoke immediately
+// ---------------------------------------------------------------------------
+investorsRouter.delete("/:id/access-links/:linkId", async (req, res) => {
+  const ctx = req.ctx!;
+  const result = await ctx.db.investorAccessLink.updateMany({
+    where: { id: req.params.linkId, investorId: req.params.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (result.count === 0) {
+    return res.status(404).json({ error: "Active access link not found" });
+  }
+
+  await audit(ctx.db, ctx.tenantId, {
+    actorType: "advisor_rep",
+    actorId: ctx.advisorRepId,
+    action: "investor.access_link_revoked",
+    entityType: "Investor",
+    entityId: req.params.id,
+    metadata: { accessLinkId: req.params.linkId },
   });
 
   res.status(204).end();

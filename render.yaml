@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: alta-server
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate --schema packages/server/prisma/schema.prisma && npm run build --workspace packages/server
+    startCommand: npx prisma migrate deploy --schema packages/server/prisma/schema.prisma && node packages/server/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_TTL_HOURS
+        value: "24"
+      - key: TIN_ENCRYPTION_KEY
+        sync: false
+      - key: ANVIL_API_KEY
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false

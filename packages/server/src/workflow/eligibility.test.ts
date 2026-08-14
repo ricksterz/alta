@@ -152,6 +152,78 @@ describe("checkEligibility — 3(c)(1) holder cap", () => {
   });
 });
 
+describe("checkEligibility — eligibility beyond accreditation/QP", () => {
+  it("blocks an ERISA plan from a fund that excludes them", () => {
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, isErisaPlan: true },
+      fund: { ...FUND_3C1, erisaEligible: false },
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.blockers.map((b) => b.code)).toContain("erisa_not_permitted");
+  });
+
+  it("does not block an ERISA plan when the fund doesn't say erisaEligible: false", () => {
+    // Absent/undefined must read as permitted — most funds never set this.
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, isErisaPlan: true },
+      fund: FUND_3C1,
+    });
+    expect(result.blockers.map((b) => b.code)).not.toContain("erisa_not_permitted");
+  });
+
+  it("does not block a non-ERISA investor even when the fund excludes ERISA plans", () => {
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, isErisaPlan: false },
+      fund: { ...FUND_3C1, erisaEligible: false },
+    });
+    expect(result.blockers.map((b) => b.code)).not.toContain("erisa_not_permitted");
+  });
+
+  it("blocks an IRA investment into a fund that excludes IRAs", () => {
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, isIraAccount: true },
+      fund: { ...FUND_3C1, iraEligible: false },
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.blockers.map((b) => b.code)).toContain("ira_not_permitted");
+  });
+
+  it("blocks a tax-exempt investor from a fund that excludes them", () => {
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, isTaxExempt: true },
+      fund: { ...FUND_3C1, taxExemptEligible: false },
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.blockers.map((b) => b.code)).toContain("tax_exempt_not_permitted");
+  });
+
+  it("blocks a non-US tax resident from a US-only fund", () => {
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, taxResidencyCountry: "Germany" },
+      fund: { ...FUND_3C1, nonUsInvestorsPermitted: false },
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.blockers.map((b) => b.code)).toContain("non_us_not_permitted");
+  });
+
+  it("admits a US tax resident to a US-only fund", () => {
+    const result = checkEligibility({
+      investor: { ...ACCREDITED_ENTITY, taxResidencyCountry: "US" },
+      fund: { ...FUND_3C1, nonUsInvestorsPermitted: false },
+    });
+    expect(result.blockers.map((b) => b.code)).not.toContain("non_us_not_permitted");
+  });
+
+  it("does not block on unrecorded tax residency, even for a US-only fund", () => {
+    // Unknown must not manufacture a blocker — same principle as unknown_exclusion.
+    const result = checkEligibility({
+      investor: ACCREDITED_ENTITY,
+      fund: { ...FUND_3C1, nonUsInvestorsPermitted: false },
+    });
+    expect(result.blockers.map((b) => b.code)).not.toContain("non_us_not_permitted");
+  });
+});
+
 describe("checkEligibility — unknown exclusion", () => {
   it("warns rather than silently passing when no exclusion is recorded", () => {
     const result = checkEligibility({

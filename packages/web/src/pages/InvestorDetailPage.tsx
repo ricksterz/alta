@@ -1,9 +1,135 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api } from "../lib/api";
-import type { InvestorDetail } from "../lib/types";
+import { api, ApiError } from "../lib/api";
+import type { AccessLinkItem, CreatedAccessLink, InvestorDetail } from "../lib/types";
 import { ACCREDITATION_BASES } from "../lib/accreditation";
 import { StatusBadge } from "../components/StatusBadge";
+
+const ACCESS_LINK_STATUS_META: Record<AccessLinkItem["status"], string> = {
+  active: "bg-emerald-50 text-emerald-700",
+  expired: "bg-slate-100 text-slate-500",
+  revoked: "bg-red-50 text-red-700",
+};
+
+function AccessLinksPanel({ investorId }: { investorId: string }) {
+  const [links, setLinks] = useState<AccessLinkItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [justCreated, setJustCreated] = useState<CreatedAccessLink | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api
+      .get<AccessLinkItem[]>(`/investors/${investorId}/access-links`)
+      .then(setLinks)
+      .catch((err) => setError(err.message));
+  }, [investorId]);
+
+  useEffect(load, [load]);
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    try {
+      const link = await api.post<CreatedAccessLink>(`/investors/${investorId}/access-links`);
+      setJustCreated(link);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to create link");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(linkId: string) {
+    setError(null);
+    try {
+      await api.delete(`/investors/${investorId}/access-links/${linkId}`);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to revoke link");
+    }
+  }
+
+  const linkUrl = justCreated ? `${window.location.origin}/lp/${justCreated.token}` : null;
+
+  return (
+    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          LP view-only links
+        </h2>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={create}
+          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+        >
+          {busy ? "Generating…" : "+ Generate link"}
+        </button>
+      </div>
+
+      {error && <p className="mb-3 text-xs text-red-600">{error}</p>}
+
+      {linkUrl && (
+        <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 p-3">
+          <p className="mb-1 text-xs font-medium text-emerald-800">
+            Copy this now — it won't be shown again. Expires{" "}
+            {new Date(justCreated!.expiresAt).toLocaleDateString()}.
+          </p>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={linkUrl}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 rounded border border-emerald-300 bg-white px-2 py-1.5 text-xs text-slate-700"
+            />
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(linkUrl)}
+              className="rounded border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
+
+      {links && links.length === 0 && <p className="text-sm text-slate-400">No links generated yet.</p>}
+
+      {links && links.length > 0 && (
+        <ul className="space-y-2">
+          {links.map((l) => (
+            <li
+              key={l.id}
+              className="flex items-center justify-between rounded border border-slate-200 px-3 py-2"
+            >
+              <div className="text-sm text-slate-700">
+                <span className={`mr-2 rounded px-2 py-0.5 text-xs font-medium ${ACCESS_LINK_STATUS_META[l.status]}`}>
+                  {l.status}
+                </span>
+                Created by {l.createdBy} on {new Date(l.createdAt).toLocaleDateString()}
+                {l.lastAccessedAt && (
+                  <span className="ml-2 text-xs text-slate-400">
+                    · last viewed {new Date(l.lastAccessedAt).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              {l.status === "active" && (
+                <button
+                  type="button"
+                  onClick={() => revoke(l.id)}
+                  className="rounded border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  Revoke
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 const QP_LABELS: Record<string, string> = {
   natural_person_5m: "Natural person with ≥$5M in investments",
@@ -101,7 +227,22 @@ export function InvestorDetailPage() {
                 .join(", ") || null}
             />
             <Field label="Country" value={investor.country} />
+            <Field label="Tax residency" value={investor.taxResidencyCountry} />
           </dl>
+
+          {(investor.isErisaPlan || investor.isIraAccount || investor.isTaxExempt) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {investor.isErisaPlan && (
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">ERISA plan</span>
+              )}
+              {investor.isIraAccount && (
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">IRA account</span>
+              )}
+              {investor.isTaxExempt && (
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Tax-exempt</span>
+              )}
+            </div>
+          )}
 
           {investor.principals.length > 0 && (
             <div className="mt-6">
@@ -233,6 +374,8 @@ export function InvestorDetailPage() {
           </table>
         )}
       </section>
+
+      <AccessLinksPanel investorId={investor.id} />
     </div>
   );
 }

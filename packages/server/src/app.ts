@@ -10,6 +10,7 @@ import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { positionsRouter } from "./routes/positions.js";
 import { capitalCallsRouter } from "./routes/capitalCalls.js";
 import { auditRouter } from "./routes/audit.js";
+import { lpRouter } from "./routes/lp.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { CANONICAL_FIELDS, CANONICAL_FIELD_REGISTRY_VERSION } from "./canonicalFields.js";
@@ -38,6 +39,7 @@ export function createApp() {
   app.use("/positions", positionsRouter);
   app.use("/capital-calls", capitalCallsRouter);
   app.use("/audit", auditRouter);
+  app.use("/lp", lpRouter); // unauthenticated — see routes/lp.ts
 
   app.get("/canonical-fields", requireAuth, (_req, res) => {
     res.json({ version: CANONICAL_FIELD_REGISTRY_VERSION, fields: CANONICAL_FIELDS });

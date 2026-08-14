@@ -16,12 +16,15 @@ import { SubscriptionDetailPage } from "./pages/subscriptions/SubscriptionDetail
 import { SubscriptionsQueuePage } from "./pages/subscriptions/SubscriptionsQueuePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { AuditPage } from "./pages/AuditPage";
+import { LegalReviewQueuePage } from "./pages/templates/LegalReviewQueuePage";
+import { LpViewPage } from "./pages/lp/LpViewPage";
 
 export function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/lp/:token" element={<LpViewPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
@@ -34,6 +37,7 @@ export function App() {
             <Route path="/funds/new" element={<FundFormPage />} />
             <Route path="/funds/:id" element={<FundDetailPage />} />
             <Route path="/templates/:id" element={<TemplateMappingPage />} />
+            <Route path="/templates" element={<LegalReviewQueuePage />} />
 
             <Route path="/subscriptions" element={<SubscriptionsQueuePage />} />
             <Route path="/subscriptions/new" element={<NewSubscriptionPage />} />

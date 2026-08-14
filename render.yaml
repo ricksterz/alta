@@ -3,7 +3,11 @@ services:
     name: alta-server
     runtime: node
     plan: free
-    buildCommand: npm install && npx prisma generate --schema packages/server/prisma/schema.prisma && npm run build --workspace packages/server
+    # --include=dev overrides npm's default of skipping devDependencies when
+    # NODE_ENV=production is set (which it is, below, for the app's own use
+    # at runtime — cookie `secure` flag). Without it, typescript/@types/node
+    # never install and the build fails before it can even run tsc.
+    buildCommand: npm install --include=dev && npx prisma generate --schema packages/server/prisma/schema.prisma && npm run build --workspace packages/server
     startCommand: npx prisma migrate deploy --schema packages/server/prisma/schema.prisma && node packages/server/dist/index.js
     envVars:
       - key: NODE_ENV

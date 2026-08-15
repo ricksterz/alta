@@ -215,6 +215,46 @@ async function main() {
     { key: "fundLegalName", label: "Fund Legal Name", canonical: "fund.legal_name" },
   ];
 
+  async function seedTemplateForFund(fund: { id: string; name: string; gpSignatoryName: string | null }, tenantId: string, gpRepId: string) {
+    const already = await prisma.documentTemplate.findFirst({ where: { fundId: fund.id } });
+    if (already) return false;
+
+    const slugName = fund.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+    const template = await prisma.documentTemplate.create({
+      data: {
+        sponsorTenantId: tenantId,
+        fundId: fund.id,
+        anvilTemplateId: `seed-cast-${slugName}`,
+        originalFilename: `${slugName}-subscription-agreement.pdf`,
+        status: "ready",
+        detectedFieldsRaw: SEED_TEMPLATE_FIELDS.map((f) => ({ id: f.key, name: f.label })),
+        uploadedByRepId: gpRepId,
+      },
+    });
+
+    await prisma.fieldMapping.createMany({
+      data: [
+        ...SEED_TEMPLATE_FIELDS.map((f) => ({
+          sponsorTenantId: tenantId,
+          templateId: template.id,
+          anvilFieldKey: f.key,
+          anvilFieldLabel: f.label,
+          mappingType: "canonical" as const,
+          canonicalField: f.canonical,
+        })),
+        {
+          sponsorTenantId: tenantId,
+          templateId: template.id,
+          anvilFieldKey: "gpSignatoryName",
+          anvilFieldLabel: "GP Signatory",
+          mappingType: "static_value" as const,
+          staticValue: fund.gpSignatoryName ?? "Fund General Partner",
+        },
+      ],
+    });
+    return true;
+  }
+
   let templateCount = 0;
   for (const slug of entitledSlugs) {
     const tenant = await prisma.tenant.findUnique({ where: { slug } });
@@ -224,44 +264,21 @@ async function main() {
     if (!gp) continue;
 
     for (const fund of funds) {
-      const already = await prisma.documentTemplate.findFirst({ where: { fundId: fund.id } });
-      if (already) continue;
-
-      const slugName = fund.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
-      const template = await prisma.documentTemplate.create({
-        data: {
-          sponsorTenantId: tenant.id,
-          fundId: fund.id,
-          anvilTemplateId: `seed-cast-${slugName}`,
-          originalFilename: `${slugName}-subscription-agreement.pdf`,
-          status: "ready",
-          detectedFieldsRaw: SEED_TEMPLATE_FIELDS.map((f) => ({ id: f.key, name: f.label })),
-          uploadedByRepId: gp.id,
-        },
-      });
-
-      await prisma.fieldMapping.createMany({
-        data: [
-          ...SEED_TEMPLATE_FIELDS.map((f) => ({
-            sponsorTenantId: tenant.id,
-            templateId: template.id,
-            anvilFieldKey: f.key,
-            anvilFieldLabel: f.label,
-            mappingType: "canonical" as const,
-            canonicalField: f.canonical,
-          })),
-          {
-            sponsorTenantId: tenant.id,
-            templateId: template.id,
-            anvilFieldKey: "gpSignatoryName",
-            anvilFieldLabel: "GP Signatory",
-            mappingType: "static_value" as const,
-            staticValue: fund.gpSignatoryName ?? "Fund General Partner",
-          },
-        ],
-      });
-      templateCount++;
+      if (await seedTemplateForFund(fund, tenant.id, gp.id)) templateCount++;
     }
+  }
+
+  // Meridian's own fund also gets a ready template, same as every entitled
+  // fund above: some of its seeded subscriptions (e.g. Terrence Bell's
+  // rejected one) already reached a stage that requires a generated
+  // document, and the fund is still meant to be the one a fresh
+  // pending_investor_data subscription walks through live in the demo.
+  if (await seedTemplateForFund(
+    { id: "00000000-0000-0000-0000-000000000001", name: "Meridian Growth Fund III", gpSignatoryName: "Priya Nair" },
+    sponsorTenant.id,
+    gpOps.id
+  )) {
+    templateCount++;
   }
 
   // --- Fund administrator tenant (Phase 5) ---

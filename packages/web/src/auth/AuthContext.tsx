@@ -6,6 +6,7 @@ interface AuthState {
   user: AdvisorRepSummary | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginAsDemo: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -32,13 +33,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me);
   }
 
+  /** Demo role switching — server-side allowlist, see routes/auth.ts. */
+  async function loginAsDemo(email: string) {
+    const me = await api.post<AdvisorRepSummary>("/auth/demo-login", { email });
+    setUser(me);
+  }
+
   async function logout() {
     await api.post("/auth/logout");
     setUser(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, loginAsDemo, logout }}>
       {children}
     </AuthContext.Provider>
   );

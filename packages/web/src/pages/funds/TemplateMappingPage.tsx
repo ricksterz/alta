@@ -8,25 +8,25 @@ const TEMPLATE_STATUS_META: Record<
   DocumentTemplateDetail["status"],
   { label: string; className: string }
 > = {
-  processing: { label: "Processing", className: "bg-slate-100 text-slate-600" },
-  pending_legal_review: { label: "Pending legal review", className: "bg-sky-50 text-sky-700" },
-  ready: { label: "Ready", className: "bg-emerald-50 text-emerald-700" },
-  rejected: { label: "Rejected by counsel", className: "bg-red-50 text-red-700" },
-  archived: { label: "Archived", className: "bg-slate-100 text-slate-400" },
+  processing: { label: "Processing", className: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400" },
+  pending_legal_review: { label: "Pending legal review", className: "bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300" },
+  ready: { label: "Ready", className: "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300" },
+  rejected: { label: "Rejected by counsel", className: "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300" },
+  archived: { label: "Archived", className: "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500" },
 };
 
 function ReadOnlyRow({ mapping }: { mapping: FieldMapping }) {
   return (
-    <tr className="border-b border-slate-100">
+    <tr className="border-b border-slate-100 dark:border-slate-800">
       <td className="py-3 pr-4">
-        <div className="text-sm font-medium text-slate-800">{mapping.anvilFieldLabel ?? mapping.anvilFieldKey}</div>
-        <div className="text-xs text-slate-400">{mapping.anvilFieldKey}</div>
+        <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{mapping.anvilFieldLabel ?? mapping.anvilFieldKey}</div>
+        <div className="text-xs text-slate-400 dark:text-slate-500">{mapping.anvilFieldKey}</div>
       </td>
-      <td className="py-3 pr-4 text-sm capitalize text-slate-600">{mapping.mappingType.replace(/_/g, " ")}</td>
-      <td className="py-3 text-sm text-slate-600">
+      <td className="py-3 pr-4 text-sm capitalize text-slate-600 dark:text-slate-400">{mapping.mappingType.replace(/_/g, " ")}</td>
+      <td className="py-3 text-sm text-slate-600 dark:text-slate-400">
         {mapping.mappingType === "canonical" && (mapping.canonicalField ?? "—")}
         {mapping.mappingType === "static_value" && (mapping.staticValue ?? "—")}
-        {mapping.mappingType === "unmapped" && <span className="text-slate-300">—</span>}
+        {mapping.mappingType === "unmapped" && <span className="text-slate-300 dark:text-slate-600">—</span>}
       </td>
     </tr>
   );
@@ -65,14 +65,14 @@ function RowEditor({
   }
 
   return (
-    <tr className="border-b border-slate-100">
+    <tr className="border-b border-slate-100 dark:border-slate-800">
       <td className="py-3 pr-4">
-        <div className="text-sm font-medium text-slate-800">{mapping.anvilFieldLabel ?? mapping.anvilFieldKey}</div>
-        <div className="text-xs text-slate-400">{mapping.anvilFieldKey}</div>
+        <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{mapping.anvilFieldLabel ?? mapping.anvilFieldKey}</div>
+        <div className="text-xs text-slate-400 dark:text-slate-500">{mapping.anvilFieldKey}</div>
       </td>
       <td className="py-3 pr-4">
         <select
-          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-1.5 text-sm"
           value={mappingType}
           onChange={(e) => setMappingType(e.target.value as FieldMappingType)}
         >
@@ -84,7 +84,7 @@ function RowEditor({
       <td className="py-3 pr-4">
         {mappingType === "canonical" && (
           <select
-            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            className="w-full rounded border border-slate-300 dark:border-slate-700 px-2 py-1.5 text-sm"
             value={canonicalField}
             onChange={(e) => setCanonicalField(e.target.value)}
           >
@@ -98,20 +98,20 @@ function RowEditor({
         )}
         {mappingType === "static_value" && (
           <input
-            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            className="w-full rounded border border-slate-300 dark:border-slate-700 px-2 py-1.5 text-sm"
             placeholder="Constant value for this field"
             value={staticValue}
             onChange={(e) => setStaticValue(e.target.value)}
           />
         )}
-        {mappingType === "unmapped" && <span className="text-sm text-slate-300">—</span>}
+        {mappingType === "unmapped" && <span className="text-sm text-slate-300 dark:text-slate-600">—</span>}
       </td>
       <td className="py-3 text-right">
         <button
           type="button"
           disabled={!dirty || saving}
           onClick={save}
-          className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+          className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
         >
           {saving ? "Saving…" : "Save"}
         </button>
@@ -172,8 +172,8 @@ export function TemplateMappingPage() {
     }
   }
 
-  if (error && !template) return <p className="text-sm text-red-600">{error}</p>;
-  if (!template) return <p className="text-slate-500">Loading…</p>;
+  if (error && !template) return <p className="text-sm text-red-600 dark:text-red-300">{error}</p>;
+  if (!template) return <p className="text-slate-500 dark:text-slate-400">Loading…</p>;
 
   const unmappedCount = template.fieldMappings.filter((m) => m.mappingType === "unmapped").length;
   const statusMeta = TEMPLATE_STATUS_META[template.status];
@@ -183,14 +183,14 @@ export function TemplateMappingPage() {
 
   return (
     <div>
-      <Link to={`/funds/${template.fundId}`} className="mb-4 inline-block text-sm text-slate-500 hover:underline">
+      <Link to={`/funds/${template.fundId}`} className="mb-4 inline-block text-sm text-slate-500 dark:text-slate-400 hover:underline">
         ← Back to fund
       </Link>
 
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{template.originalFilename}</h1>
-          <p className="text-sm text-slate-500">{template.fieldMappings.length} detected fields</p>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{template.originalFilename}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{template.fieldMappings.length} detected fields</p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`rounded px-3 py-1 text-sm font-medium ${statusMeta.className}`}>
@@ -199,7 +199,7 @@ export function TemplateMappingPage() {
           {!isFundLegal && (
             <span
               className={`rounded px-3 py-1 text-sm font-medium ${
-                unmappedCount > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                unmappedCount > 0 ? "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300" : "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300"
               }`}
             >
               {unmappedCount > 0 ? `${unmappedCount} unmapped` : "All fields mapped"}
@@ -208,22 +208,22 @@ export function TemplateMappingPage() {
         </div>
       </div>
 
-      {error && <p className="mb-4 rounded bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 rounded bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-600 dark:text-red-300">{error}</p>}
 
       {template.legalRejectionReason && (
-        <p className="mb-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="mb-4 rounded bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">
           <span className="font-medium">Counsel rejected:</span> {template.legalRejectionReason}
         </p>
       )}
 
       {(canSubmitForReview || canReview) && (
-        <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="mb-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
           {canSubmitForReview && (
             <button
               type="button"
               disabled={busy}
               onClick={() => act(() => api.post(`/templates/${id}/submit-for-review`))}
-              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-40"
             >
               {template.status === "rejected" ? "Resubmit for legal review" : "Submit for legal review"}
             </button>
@@ -243,14 +243,14 @@ export function TemplateMappingPage() {
               <button
                 type="button"
                 onClick={() => setShowReject((s) => !s)}
-                className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-red-50 hover:text-red-700"
+                className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-700 dark:hover:text-red-300"
               >
                 Reject
               </button>
               {showReject && (
                 <div className="flex w-full gap-2">
                   <input
-                    className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
+                    className="flex-1 rounded border border-slate-300 dark:border-slate-700 px-2 py-1.5 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none"
                     placeholder="Reason for rejection"
                     value={rejectReason}
                     onChange={(e) => setRejectReason(e.target.value)}
@@ -278,15 +278,15 @@ export function TemplateMappingPage() {
       )}
 
       {template.fieldMappings.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 py-16 text-center text-slate-500">
+        <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 py-16 text-center text-slate-500 dark:text-slate-400">
           No fields were auto-detected for this template. This can happen if Anvil's field-detection
           response came back in an unrecognized shape — check the stored raw response before assuming
           the PDF has no fillable fields.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white p-6">
+        <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
           <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-slate-400">
+            <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
               <tr>
                 <th className="pb-2 pr-4">Detected field</th>
                 <th className="pb-2 pr-4">Mapping type</th>

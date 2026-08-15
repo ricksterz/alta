@@ -59,10 +59,10 @@ const emptyProfile: ProfileForm = {
 };
 
 function inputClass() {
-  return "w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none";
+  return "w-full rounded border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none";
 }
 function labelClass() {
-  return "mb-1 block text-sm font-medium text-slate-700";
+  return "mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300";
 }
 
 export function InvestorWizardPage() {
@@ -233,7 +233,7 @@ export function InvestorWizardPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">New investor</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-slate-900 dark:text-slate-100">New investor</h1>
 
       <ol className="mb-8 flex items-center gap-2 text-xs">
         {STEPS.map((label, i) => (
@@ -241,10 +241,10 @@ export function InvestorWizardPage() {
             key={label}
             className={`flex items-center gap-2 rounded-full px-3 py-1 ${
               i === step
-                ? "bg-slate-900 text-white"
+                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
                 : i < step
-                  ? "bg-emerald-100 text-emerald-700"
-                  : "bg-slate-100 text-slate-400"
+                  ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
             }`}
           >
             {i + 1}. {label}
@@ -252,9 +252,9 @@ export function InvestorWizardPage() {
         ))}
       </ol>
 
-      {error && <p className="mb-4 rounded bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 rounded bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-600 dark:text-red-300">{error}</p>}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
+      <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
         {step === 0 && (
           <div className="space-y-4">
             <div>
@@ -325,8 +325,8 @@ export function InvestorWizardPage() {
                   </div>
                 </div>
                 {isJoint && (
-                  <div className="rounded border border-slate-200 p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <div className="rounded border border-slate-200 dark:border-slate-800 p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                       Joint owner
                     </p>
                     <div className="grid grid-cols-2 gap-4">
@@ -366,8 +366,8 @@ export function InvestorWizardPage() {
               <input className={inputClass()} placeholder="Postal code" value={profile.postalCode} onChange={(e) => update("postalCode", e.target.value)} />
             </div>
 
-            <div className="rounded border border-slate-200 p-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="rounded border border-slate-200 dark:border-slate-800 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                 Additional eligibility
               </p>
               <div className="mb-3">
@@ -377,12 +377,12 @@ export function InvestorWizardPage() {
                   value={profile.taxResidencyCountry}
                   onChange={(e) => update("taxResidencyCountry", e.target.value)}
                 />
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                   Separate from mailing address — some funds don't accept non-US tax residents.
                 </p>
               </div>
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm text-slate-700">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={profile.isErisaPlan}
@@ -390,7 +390,7 @@ export function InvestorWizardPage() {
                   />
                   ERISA employee benefit plan
                 </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={profile.isIraAccount}
@@ -398,7 +398,7 @@ export function InvestorWizardPage() {
                   />
                   Investing through an IRA
                 </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={profile.isTaxExempt}
@@ -428,15 +428,15 @@ export function InvestorWizardPage() {
                 ))}
               </select>
               {accreditationBasis && (
-                <p className="mt-2 text-xs text-slate-500">
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   {availableBases.find((b) => b.value === accreditationBasis)?.helpText}
                 </p>
               )}
             </div>
-            <div className="rounded border border-slate-200 p-4">
+            <div className="rounded border border-slate-200 dark:border-slate-800 p-4">
               <label className={labelClass()}>
                 Qualified purchaser status{" "}
-                <span className="font-normal text-slate-400">(optional)</span>
+                <span className="font-normal text-slate-400 dark:text-slate-500">(optional)</span>
               </label>
               <select
                 value={qpBasis}
@@ -450,7 +450,7 @@ export function InvestorWizardPage() {
                   </option>
                 ))}
               </select>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Separate from accreditation and a higher bar (broadly $5M in investments vs
                 $1M net worth). Required to subscribe to a fund relying on the{" "}
                 <abbr title="Investment Company Act Section 3(c)(7)">3(c)(7)</abbr> exclusion —
@@ -464,9 +464,9 @@ export function InvestorWizardPage() {
               <input
                 type="file"
                 onChange={(e) => setEvidenceFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-slate-600"
+                className="block w-full text-sm text-slate-600 dark:text-slate-400"
               />
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                 Saved to local disk for now — no KYC/AML verification in Phase 1.
               </p>
             </div>
@@ -518,7 +518,7 @@ export function InvestorWizardPage() {
         )}
 
         {step === 3 && (
-          <div className="space-y-4 text-sm text-slate-700">
+          <div className="space-y-4 text-sm text-slate-700 dark:text-slate-300">
             <p>
               <span className="font-medium">Type:</span> {profile.type}
             </p>
@@ -539,7 +539,7 @@ export function InvestorWizardPage() {
             <p>
               <span className="font-medium">Tax form:</span> {taxFormType.toUpperCase()}
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 dark:text-slate-500">
               Submitting will record this onboarding as complete in the audit trail.
             </p>
           </div>
@@ -550,7 +550,7 @@ export function InvestorWizardPage() {
             type="button"
             disabled={step === 0}
             onClick={() => setStep((s) => Math.max(0, s - 1))}
-            className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 disabled:opacity-40"
+            className="rounded border border-slate-300 dark:border-slate-700 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 disabled:opacity-40"
           >
             Back
           </button>
@@ -560,7 +560,7 @@ export function InvestorWizardPage() {
               type="button"
               disabled={submitting}
               onClick={submitProfile}
-              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Continue"}
             </button>
@@ -570,7 +570,7 @@ export function InvestorWizardPage() {
               type="button"
               disabled={submitting || !accreditationBasis}
               onClick={submitAccreditation}
-              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Continue"}
             </button>
@@ -580,7 +580,7 @@ export function InvestorWizardPage() {
               type="button"
               disabled={submitting}
               onClick={submitTaxProfile}
-              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Continue"}
             </button>

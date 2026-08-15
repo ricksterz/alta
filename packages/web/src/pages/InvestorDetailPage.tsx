@@ -6,9 +6,9 @@ import { ACCREDITATION_BASES } from "../lib/accreditation";
 import { StatusBadge } from "../components/StatusBadge";
 
 const ACCESS_LINK_STATUS_META: Record<AccessLinkItem["status"], string> = {
-  active: "bg-emerald-50 text-emerald-700",
-  expired: "bg-slate-100 text-slate-500",
-  revoked: "bg-red-50 text-red-700",
+  active: "bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300",
+  expired: "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400",
+  revoked: "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300",
 };
 
 function AccessLinksPanel({ investorId }: { investorId: string }) {
@@ -53,26 +53,26 @@ function AccessLinksPanel({ investorId }: { investorId: string }) {
   const linkUrl = justCreated ? `${window.location.origin}/lp/${justCreated.token}` : null;
 
   return (
-    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
+    <section className="mt-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           LP view-only links
         </h2>
         <button
           type="button"
           disabled={busy}
           onClick={create}
-          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-40"
         >
           {busy ? "Generating…" : "+ Generate link"}
         </button>
       </div>
 
-      {error && <p className="mb-3 text-xs text-red-600">{error}</p>}
+      {error && <p className="mb-3 text-xs text-red-600 dark:text-red-300">{error}</p>}
 
       {linkUrl && (
-        <div className="mb-4 rounded border border-emerald-200 bg-emerald-50 p-3">
-          <p className="mb-1 text-xs font-medium text-emerald-800">
+        <div className="mb-4 rounded border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950 p-3">
+          <p className="mb-1 text-xs font-medium text-emerald-800 dark:text-emerald-200">
             Copy this now — it won't be shown again. Expires{" "}
             {new Date(justCreated!.expiresAt).toLocaleDateString()}.
           </p>
@@ -81,12 +81,12 @@ function AccessLinksPanel({ investorId }: { investorId: string }) {
               readOnly
               value={linkUrl}
               onFocus={(e) => e.currentTarget.select()}
-              className="flex-1 rounded border border-emerald-300 bg-white px-2 py-1.5 text-xs text-slate-700"
+              className="flex-1 rounded border border-emerald-300 dark:border-emerald-800 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300"
             />
             <button
               type="button"
               onClick={() => navigator.clipboard.writeText(linkUrl)}
-              className="rounded border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+              className="rounded border border-emerald-300 dark:border-emerald-800 px-3 py-1.5 text-xs font-medium text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100"
             >
               Copy
             </button>
@@ -94,22 +94,22 @@ function AccessLinksPanel({ investorId }: { investorId: string }) {
         </div>
       )}
 
-      {links && links.length === 0 && <p className="text-sm text-slate-400">No links generated yet.</p>}
+      {links && links.length === 0 && <p className="text-sm text-slate-400 dark:text-slate-500">No links generated yet.</p>}
 
       {links && links.length > 0 && (
         <ul className="space-y-2">
           {links.map((l) => (
             <li
               key={l.id}
-              className="flex items-center justify-between rounded border border-slate-200 px-3 py-2"
+              className="flex items-center justify-between rounded border border-slate-200 dark:border-slate-800 px-3 py-2"
             >
-              <div className="text-sm text-slate-700">
+              <div className="text-sm text-slate-700 dark:text-slate-300">
                 <span className={`mr-2 rounded px-2 py-0.5 text-xs font-medium ${ACCESS_LINK_STATUS_META[l.status]}`}>
                   {l.status}
                 </span>
                 Created by {l.createdBy} on {new Date(l.createdAt).toLocaleDateString()}
                 {l.lastAccessedAt && (
-                  <span className="ml-2 text-xs text-slate-400">
+                  <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
                     · last viewed {new Date(l.lastAccessedAt).toLocaleDateString()}
                   </span>
                 )}
@@ -118,7 +118,7 @@ function AccessLinksPanel({ investorId }: { investorId: string }) {
                 <button
                   type="button"
                   onClick={() => revoke(l.id)}
-                  className="rounded border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-red-50 hover:text-red-700"
+                  className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-700 dark:hover:text-red-300"
                 >
                   Revoke
                 </button>
@@ -144,8 +144,8 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   if (!value) return null;
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="text-sm text-slate-800">{value}</dd>
+      <dt className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</dt>
+      <dd className="text-sm text-slate-800 dark:text-slate-200">{value}</dd>
     </div>
   );
 }
@@ -163,8 +163,8 @@ export function InvestorDetailPage() {
       .catch((err) => setError(err.message));
   }, [id]);
 
-  if (error) return <p className="text-sm text-red-600">{error}</p>;
-  if (!investor) return <p className="text-slate-500">Loading…</p>;
+  if (error) return <p className="text-sm text-red-600 dark:text-red-300">{error}</p>;
+  if (!investor) return <p className="text-slate-500 dark:text-slate-400">Loading…</p>;
 
   const isOrg = investor.type === "entity" || investor.type === "trust";
   const basisLabel = ACCREDITATION_BASES.find((b) => b.value === investor.accreditationBasis)?.label;
@@ -177,25 +177,25 @@ export function InvestorDetailPage() {
 
   return (
     <div>
-      <Link to="/investors" className="mb-4 inline-block text-sm text-slate-500 hover:underline">
+      <Link to="/investors" className="mb-4 inline-block text-sm text-slate-500 dark:text-slate-400 hover:underline">
         ← Back to investors
       </Link>
 
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{displayName}</h1>
-          <p className="text-sm text-slate-500 capitalize">{investor.type}</p>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{displayName}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 capitalize">{investor.type}</p>
         </div>
         {readyToSubscribe ? (
           <Link
             to={`/subscriptions/new?investorId=${investor.id}`}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             Start subscription
           </Link>
         ) : (
           <span
-            className="rounded bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400"
+            className="rounded bg-slate-100 dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-400 dark:text-slate-500"
             title="Complete accreditation and a tax form before subscribing"
           >
             Start subscription
@@ -204,8 +204,8 @@ export function InvestorDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <section className="rounded-lg border border-slate-200 bg-white p-6 lg:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Profile</h2>
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 lg:col-span-2">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Profile</h2>
           <dl className="grid grid-cols-2 gap-4">
             {isOrg ? (
               <>
@@ -233,29 +233,29 @@ export function InvestorDetailPage() {
           {(investor.isErisaPlan || investor.isIraAccount || investor.isTaxExempt) && (
             <div className="mt-4 flex flex-wrap gap-2">
               {investor.isErisaPlan && (
-                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">ERISA plan</span>
+                <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-400">ERISA plan</span>
               )}
               {investor.isIraAccount && (
-                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">IRA account</span>
+                <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-400">IRA account</span>
               )}
               {investor.isTaxExempt && (
-                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Tax-exempt</span>
+                <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-400">Tax-exempt</span>
               )}
             </div>
           )}
 
           {investor.principals.length > 0 && (
             <div className="mt-6">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                 Principals
               </h3>
-              <ul className="space-y-1 text-sm text-slate-700">
+              <ul className="space-y-1 text-sm text-slate-700 dark:text-slate-300">
                 {investor.principals.map((p) => (
                   <li key={p.id}>
                     {p.firstName} {p.lastName}
-                    <span className="ml-2 text-xs text-slate-400">{p.role.replace(/_/g, " ")}</span>
+                    <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">{p.role.replace(/_/g, " ")}</span>
                     {p.isPrimaryContact && (
-                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                      <span className="ml-2 rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-400">
                         primary contact
                       </span>
                     )}
@@ -266,14 +266,14 @@ export function InvestorDetailPage() {
           )}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Accreditation & Tax
           </h2>
           {investor.accreditationBasis ? (
             <div className="mb-4">
-              <p className="text-sm font-medium text-slate-800">{basisLabel}</p>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{basisLabel}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
                 Attested {investor.accreditationAttestedAt && new Date(investor.accreditationAttestedAt).toLocaleDateString()}
               </p>
             </div>
@@ -282,21 +282,21 @@ export function InvestorDetailPage() {
           )}
 
           <div className="mb-4">
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
               Qualified purchaser
             </h3>
             {investor.qualifiedPurchaserBasis ? (
               <>
-                <p className="text-sm text-slate-800">
+                <p className="text-sm text-slate-800 dark:text-slate-200">
                   {QP_LABELS[investor.qualifiedPurchaserBasis] ?? investor.qualifiedPurchaserBasis}
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   Attested{" "}
                   {investor.qpAttestedAt && new Date(investor.qpAttestedAt).toLocaleDateString()}
                 </p>
               </>
             ) : (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 Not established — cannot subscribe to 3(c)(7) funds
               </p>
             )}
@@ -304,10 +304,10 @@ export function InvestorDetailPage() {
 
           {investor.evidence.length > 0 && (
             <div className="mb-4">
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                 Evidence
               </h3>
-              <ul className="text-sm text-slate-600">
+              <ul className="text-sm text-slate-600 dark:text-slate-400">
                 {investor.evidence.map((e) => (
                   <li key={e.id}>{e.fileName}</li>
                 ))}
@@ -317,10 +317,10 @@ export function InvestorDetailPage() {
 
           {investor.taxProfile ? (
             <div>
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                 Tax form
               </h3>
-              <p className="text-sm text-slate-800">{investor.taxProfile.formType.toUpperCase()}</p>
+              <p className="text-sm text-slate-800 dark:text-slate-200">{investor.taxProfile.formType.toUpperCase()}</p>
             </div>
           ) : (
             <p className="text-sm text-amber-600">Tax form not yet submitted</p>
@@ -328,15 +328,15 @@ export function InvestorDetailPage() {
         </section>
       </div>
 
-      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <section className="mt-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Subscription history
         </h2>
         {investor.subscriptions.length === 0 ? (
-          <p className="text-sm text-slate-400">No subscriptions yet.</p>
+          <p className="text-sm text-slate-400 dark:text-slate-500">No subscriptions yet.</p>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-slate-400">
+            <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
               <tr>
                 <th className="py-2">Fund</th>
                 <th className="py-2">Status</th>
@@ -344,13 +344,13 @@ export function InvestorDetailPage() {
                 <th className="py-2">Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {investor.subscriptions.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50">
+                <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                   <td className="py-2">
                     <Link
                       to={`/subscriptions/${s.id}`}
-                      className="font-medium text-slate-900 hover:underline"
+                      className="font-medium text-slate-900 dark:text-slate-100 hover:underline"
                     >
                       {s.fund.name}
                     </Link>

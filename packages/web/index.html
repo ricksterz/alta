@@ -1,9 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alta</title>
+    <script>
+      // Applied before first paint so a light-mode user doesn't get a dark
+      // flash (and vice versa) while the React bundle loads. ThemeProvider
+      // takes over from here and is the single source of truth afterwards.
+      (function () {
+        try {
+          var stored = localStorage.getItem("alta_theme");
+          var dark = stored !== "light";
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {
+          /* private mode / storage disabled — the `dark` class above stands */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -42,9 +42,9 @@ export function SubscriptionsQueuePage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Subscriptions</h1>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Subscriptions</h1>
           {isReviewer && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               {actionableCount === 0
                 ? "Nothing waiting on you."
                 : `${actionableCount} waiting on you.`}
@@ -54,17 +54,17 @@ export function SubscriptionsQueuePage() {
         {!isReviewer && (
           <Link
             to="/subscriptions/new"
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             + New subscription
           </Link>
         )}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
 
       {subs && subs.length > 0 && (
-        <label className="mb-4 flex items-center gap-2 text-sm text-slate-600">
+        <label className="mb-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
           <input
             type="checkbox"
             checked={onlyActionable}
@@ -75,7 +75,7 @@ export function SubscriptionsQueuePage() {
       )}
 
       {visible && visible.length === 0 && (
-        <div className="rounded-lg border border-dashed border-slate-300 py-16 text-center text-slate-500">
+        <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 py-16 text-center text-slate-500 dark:text-slate-400">
           {subs && subs.length > 0
             ? "Nothing awaiting your action right now."
             : "No subscriptions yet."}
@@ -83,9 +83,9 @@ export function SubscriptionsQueuePage() {
       )}
 
       {visible && visible.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <thead className="bg-slate-50 dark:bg-slate-800 text-xs uppercase text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-3">Investor</th>
                 <th className="px-4 py-3">Fund</th>
@@ -94,20 +94,20 @@ export function SubscriptionsQueuePage() {
                 <th className="px-4 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {visible.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50">
+                <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                   <td className="px-4 py-3">
                     <Link
                       to={`/subscriptions/${s.id}`}
-                      className="font-medium text-slate-900 hover:underline"
+                      className="font-medium text-slate-900 dark:text-slate-100 hover:underline"
                     >
                       {s.investor.displayName}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{s.fund.name}</td>
-                  {isReviewer && <td className="px-4 py-3 text-slate-600">{s.advisorFirm}</td>}
-                  <td className="px-4 py-3 tabular-nums text-slate-600">
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{s.fund.name}</td>
+                  {isReviewer && <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{s.advisorFirm}</td>}
+                  <td className="px-4 py-3 tabular-nums text-slate-600 dark:text-slate-400">
                     {s.amount
                       ? Number(s.amount).toLocaleString("en-US", {
                           style: "currency",

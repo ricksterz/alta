@@ -4,10 +4,10 @@ import { api, ApiError } from "../../lib/api";
 import type { FundAssetClass, FundStrategyType, FundStructure, FundVehicleType } from "../../lib/types";
 
 function inputClass() {
-  return "w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none";
+  return "w-full rounded border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none";
 }
 function labelClass() {
-  return "mb-1 block text-sm font-medium text-slate-700";
+  return "mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300";
 }
 
 export function FundFormPage() {
@@ -52,10 +52,10 @@ export function FundFormPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="mb-6 text-2xl font-semibold text-slate-900">New fund</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-slate-900 dark:text-slate-100">New fund</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
-        {error && <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
+        {error && <p className="rounded bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-600 dark:text-red-300">{error}</p>}
 
         <div>
           <label className={labelClass()}>Fund name</label>
@@ -180,7 +180,7 @@ export function FundFormPage() {
             value={gpSignatoryName}
             onChange={(e) => setGpSignatoryName(e.target.value)}
           />
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
             Can be overridden per template as a static field mapping.
           </p>
         </div>
@@ -189,7 +189,7 @@ export function FundFormPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white disabled:opacity-50"
           >
             {submitting ? "Creating…" : "Create fund"}
           </button>

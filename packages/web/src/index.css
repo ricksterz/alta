@@ -1,3 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* The page background lives here rather than on every page component —
+     several routes (login, the public LP view) render outside Layout, and
+     each one setting its own body colour is how they drift apart. */
+  body {
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  }
+}

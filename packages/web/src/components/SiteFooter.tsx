@@ -149,17 +149,17 @@ export function SiteFooter() {
   const [showGlossary, setShowGlossary] = useState(false);
 
   return (
-    <footer className="mt-16 border-t border-slate-200 bg-white">
+    <footer className="mt-16 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Important disclosures
           </h2>
           <button
             type="button"
             onClick={() => setShowGlossary((v) => !v)}
             aria-expanded={showGlossary}
-            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+            className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
           >
             {showGlossary ? "Hide" : "Show"} acronyms &amp; terms
           </button>
@@ -168,32 +168,32 @@ export function SiteFooter() {
         <div className="grid grid-cols-1 gap-x-10 gap-y-5 md:grid-cols-2">
           {DISCLOSURES.map((d) => (
             <div key={d.heading}>
-              <h3 className="mb-1 text-xs font-semibold text-slate-700">{d.heading}</h3>
-              <p className="text-xs leading-relaxed text-slate-500">{d.body}</p>
+              <h3 className="mb-1 text-xs font-semibold text-slate-700 dark:text-slate-300">{d.heading}</h3>
+              <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{d.body}</p>
             </div>
           ))}
         </div>
 
         {showGlossary && (
-          <div className="mt-8 border-t border-slate-100 pt-6">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
+            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Acronyms &amp; terms
             </h3>
             <dl className="grid grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
               {ACRONYMS.map((a) => (
                 <div key={a.term}>
-                  <dt className="text-xs font-semibold text-slate-800">
+                  <dt className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                     {a.term}
-                    <span className="ml-2 font-normal text-slate-500">{a.expansion}</span>
+                    <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">{a.expansion}</span>
                   </dt>
-                  <dd className="mt-0.5 text-xs leading-relaxed text-slate-500">{a.note}</dd>
+                  <dd className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{a.note}</dd>
                 </div>
               ))}
             </dl>
           </div>
         )}
 
-        <p className="mt-8 border-t border-slate-100 pt-5 text-xs text-slate-400">
+        <p className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-5 text-xs text-slate-400 dark:text-slate-500">
           Alta — development build. Fund reference data derived from public SEC filings. Not for
           production use.
         </p>

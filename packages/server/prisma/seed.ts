@@ -2,6 +2,9 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { SEED_SPONSORS } from "./seedFunds.js";
+import { SEED_INVESTORS } from "./seedInvestors.js";
+import { encryptOptional } from "../src/crypto/fieldEncryption.js";
+import { openPositionForSubscription } from "../src/workflow/positions.js";
 
 const prisma = new PrismaClient();
 
@@ -458,6 +461,127 @@ async function main() {
       `${entitlementCount} entitlements to ${advisorTenant.slug}, ${templateCount} templates.`
   );
   for (const s of SEED_SPONSORS) console.log(`  ${s.gpEmail} / ${DEV_PASSWORD} — ${s.name}`);
+
+  // --- Hypothetical investors, subscriptions, and positions ---
+  //
+  // Subscriptions are seeded WITHOUT documents or signature requests, which is
+  // deliberate: SignatureRequest.documentId is required, and a seeded
+  // SubscriptionDocument would carry a storagePath pointing at a PDF that
+  // exists only on whichever machine ran the seed. Most sit at
+  // pending_investor_data so the generate → sign → countersign → accept → fund
+  // path can be driven live; the funded ones exist so the holder register and
+  // capital-call screens aren't empty.
+  let investorCount = 0;
+  let subscriptionCount = 0;
+  let positionCount = 0;
+
+  for (const seed of SEED_INVESTORS) {
+    const { taxForm, principals, subscriptions, ...profile } = seed;
+
+    await prisma.investor.upsert({
+      where: { id: seed.id },
+      update: {},
+      create: {
+        ...profile,
+        tenantId: advisorTenant.id,
+        createdByRepId: admin.id,
+        accreditationAttestedAt: new Date("2026-07-01"),
+        qpAttestedAt: seed.qualifiedPurchaserBasis ? new Date("2026-07-01") : null,
+      },
+    });
+    investorCount++;
+
+    const existingPrincipals = await prisma.investorPrincipal.count({
+      where: { investorId: seed.id },
+    });
+    if (existingPrincipals === 0) {
+      await prisma.investorPrincipal.createMany({
+        data: principals.map((p) => ({
+          ...p,
+          tenantId: advisorTenant.id,
+          investorId: seed.id,
+        })),
+      });
+    }
+
+    // Taxpayer identifiers go through the same encryption path as a real
+    // submission — see crypto/fieldEncryption.ts. Seeding them in plaintext
+    // would leave rows the decrypt path can't read.
+    const existingTax = await prisma.investorTaxProfile.findUnique({
+      where: { investorId: seed.id },
+    });
+    if (!existingTax) {
+      await prisma.investorTaxProfile.create({
+        data: {
+          tenantId: advisorTenant.id,
+          investorId: seed.id,
+          formType: taxForm.formType,
+          w9TaxpayerIdType: taxForm.w9TaxpayerIdType ?? null,
+          w9TaxpayerId: encryptOptional(taxForm.w9TaxpayerId),
+          w8CountryOfCitizenship: taxForm.w8CountryOfCitizenship ?? null,
+          w8ForeignTaxId: encryptOptional(taxForm.w8ForeignTaxId),
+          certifiedAt: new Date("2026-07-01"),
+        },
+      });
+    }
+
+    for (const [i, sub] of (subscriptions ?? []).entries()) {
+      const fund = await prisma.fund.findFirst({ where: { name: sub.fundName } });
+      if (!fund) {
+        console.warn(`  ! no fund named "${sub.fundName}" — skipping a subscription`);
+        continue;
+      }
+
+      // Deterministic id derived from the investor's — swap the leading block
+      // for a 2-prefixed one carrying the subscription index — so re-seeding
+      // is idempotent without needing a natural key on Subscription.
+      const subId = seed.id.replace(/^\w{8}/, `2222222${i}`);
+      const already = await prisma.subscription.findUnique({ where: { id: subId } });
+      if (already) continue;
+
+      const close = await prisma.fundClose.findFirst({
+        where: { fundId: fund.id, status: "open" },
+        orderBy: { closeDate: "asc" },
+      });
+
+      const terminal = sub.status === "funded" || sub.status === "rejected";
+      await prisma.subscription.create({
+        data: {
+          id: subId,
+          tenantId: advisorTenant.id,
+          sponsorTenantId: fund.sponsorTenantId,
+          investorId: seed.id,
+          fundId: fund.id,
+          fundCloseId: close?.id ?? null,
+          amount: sub.amount,
+          status: sub.status,
+          createdByRepId: admin.id,
+          submittedAt: new Date("2026-07-15"),
+          decidedAt: terminal || sub.status === "accepted" ? new Date("2026-08-01") : null,
+          fundedAt: sub.status === "funded" ? new Date("2026-08-05") : null,
+          rejectionReason: sub.rejectionReason ?? null,
+        },
+      });
+      subscriptionCount++;
+
+      // The fund's engaged administrator rides along as a participant, exactly
+      // as routes/subscriptions.ts does on a real create.
+      if (fund.fundAdminTenantId) {
+        await prisma.subscriptionParticipant.create({
+          data: { subscriptionId: subId, tenantId: fund.fundAdminTenantId, role: "fund_admin" },
+        });
+      }
+
+      if (sub.status === "funded") {
+        await openPositionForSubscription(subId);
+        positionCount++;
+      }
+    }
+  }
+
+  console.log(
+    `Seeded ${investorCount} investors, ${subscriptionCount} subscriptions, ${positionCount} positions.`
+  );
 }
 
 main()

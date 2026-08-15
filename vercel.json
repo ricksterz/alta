@@ -1,7 +1,7 @@
 {
   "buildCommand": "npm run build --workspace packages/web",
   "outputDirectory": "packages/web/dist",
-  "installCommand": "npm install",
+  "installCommand": "npm install --include=dev",
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://alta-server-zbvq.onrender.com/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }

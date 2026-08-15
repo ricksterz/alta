@@ -5,6 +5,7 @@ import { SEED_SPONSORS } from "./seedFunds.js";
 import { SEED_INVESTORS } from "./seedInvestors.js";
 import { encryptOptional } from "../src/crypto/fieldEncryption.js";
 import { openPositionForSubscription } from "../src/workflow/positions.js";
+import { seedDocumentAndSignatures } from "./seedDocuments.js";
 
 const prisma = new PrismaClient();
 
@@ -462,18 +463,23 @@ async function main() {
   );
   for (const s of SEED_SPONSORS) console.log(`  ${s.gpEmail} / ${DEV_PASSWORD} — ${s.name}`);
 
-  // --- Hypothetical investors, subscriptions, and positions ---
+  // --- Hypothetical investors, subscriptions, positions, and documents ---
   //
-  // Subscriptions are seeded WITHOUT documents or signature requests, which is
-  // deliberate: SignatureRequest.documentId is required, and a seeded
-  // SubscriptionDocument would carry a storagePath pointing at a PDF that
-  // exists only on whichever machine ran the seed. Most sit at
-  // pending_investor_data so the generate → sign → countersign → accept → fund
-  // path can be driven live; the funded ones exist so the holder register and
-  // capital-call screens aren't empty.
+  // Most subscriptions sit at pending_investor_data so the generate → sign →
+  // countersign → accept → fund path can still be driven live in a demo. The
+  // ones seeded further along (accepted / funded / rejected) get a real
+  // generated PDF and a fully-signed signature/fulfillment trail via
+  // seedDocumentAndSignatures — those statuses are unreachable in the real
+  // workflow without a document, so a seed that skipped it would be a state
+  // the app itself can never produce. The PDF is written to local disk like
+  // any local-provider fill; on a deployed host that disk is ephemeral and
+  // won't survive a redeploy, but the DB rows (and the eligibility/signature
+  // history they carry) do — only the "view PDF" link goes stale, which
+  // GET /:id/document already 404s on gracefully.
   let investorCount = 0;
   let subscriptionCount = 0;
   let positionCount = 0;
+  let documentCount = 0;
 
   for (const seed of SEED_INVESTORS) {
     const { taxForm, principals, subscriptions, ...profile } = seed;
@@ -537,39 +543,51 @@ async function main() {
       // is idempotent without needing a natural key on Subscription.
       const subId = seed.id.replace(/^\w{8}/, `2222222${i}`);
       const already = await prisma.subscription.findUnique({ where: { id: subId } });
-      if (already) continue;
 
-      const close = await prisma.fundClose.findFirst({
-        where: { fundId: fund.id, status: "open" },
-        orderBy: { closeDate: "asc" },
-      });
-
-      const terminal = sub.status === "funded" || sub.status === "rejected";
-      await prisma.subscription.create({
-        data: {
-          id: subId,
-          tenantId: advisorTenant.id,
-          sponsorTenantId: fund.sponsorTenantId,
-          investorId: seed.id,
-          fundId: fund.id,
-          fundCloseId: close?.id ?? null,
-          amount: sub.amount,
-          status: sub.status,
-          createdByRepId: admin.id,
-          submittedAt: new Date("2026-07-15"),
-          decidedAt: terminal || sub.status === "accepted" ? new Date("2026-08-01") : null,
-          fundedAt: sub.status === "funded" ? new Date("2026-08-05") : null,
-          rejectionReason: sub.rejectionReason ?? null,
-        },
-      });
-      subscriptionCount++;
-
-      // The fund's engaged administrator rides along as a participant, exactly
-      // as routes/subscriptions.ts does on a real create.
-      if (fund.fundAdminTenantId) {
-        await prisma.subscriptionParticipant.create({
-          data: { subscriptionId: subId, tenantId: fund.fundAdminTenantId, role: "fund_admin" },
+      if (!already) {
+        const close = await prisma.fundClose.findFirst({
+          where: { fundId: fund.id, status: "open" },
+          orderBy: { closeDate: "asc" },
         });
+
+        const terminal = sub.status === "funded" || sub.status === "rejected";
+        await prisma.subscription.create({
+          data: {
+            id: subId,
+            tenantId: advisorTenant.id,
+            sponsorTenantId: fund.sponsorTenantId,
+            investorId: seed.id,
+            fundId: fund.id,
+            fundCloseId: close?.id ?? null,
+            amount: sub.amount,
+            status: sub.status,
+            createdByRepId: admin.id,
+            submittedAt: new Date("2026-07-15"),
+            decidedAt: terminal || sub.status === "accepted" ? new Date("2026-08-01") : null,
+            fundedAt: sub.status === "funded" ? new Date("2026-08-05") : null,
+            rejectionReason: sub.rejectionReason ?? null,
+          },
+        });
+        subscriptionCount++;
+
+        // The fund's engaged administrator rides along as a participant,
+        // exactly as routes/subscriptions.ts does on a real create.
+        if (fund.fundAdminTenantId) {
+          await prisma.subscriptionParticipant.create({
+            data: { subscriptionId: subId, tenantId: fund.fundAdminTenantId, role: "fund_admin" },
+          });
+        }
+      }
+
+      // Runs whether the subscription row is new or pre-existing (from a
+      // prior seed run before documents were added), and is itself idempotent
+      // — seedDocumentAndSignatures no-ops if a document already exists.
+      if (sub.status === "accepted" || sub.status === "rejected" || sub.status === "funded") {
+        const seeded = await seedDocumentAndSignatures(prisma, subId, {
+          generatedAt: new Date("2026-07-20"),
+          signedAt: new Date("2026-07-25"),
+        });
+        if (seeded) documentCount++;
       }
 
       if (sub.status === "funded") {
@@ -580,7 +598,8 @@ async function main() {
   }
 
   console.log(
-    `Seeded ${investorCount} investors, ${subscriptionCount} subscriptions, ${positionCount} positions.`
+    `Seeded ${investorCount} investors, ${subscriptionCount} subscriptions, ` +
+      `${documentCount} signed documents, ${positionCount} positions.`
   );
 }
 

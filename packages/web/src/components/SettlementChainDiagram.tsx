@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 // tenant types. Two versions of the same chain: "simple" is the six roles a
 // first-time visitor needs, "extended" is the full ten-party version
 // (placement agent, escrow agent, secondary transferee, auditor/K-1) for
-// whoever wants the real picture. Defaults to extended; the toggle in the
-// transport bar switches to simple.
+// whoever wants the real picture. Defaults to simple; the toggle in the
+// transport bar switches to extended.
 //
 // Styling is scoped under .chain-diagram rather than global :root, and dark
 // mode piggybacks on the app's own `.dark` class on <html> (see
@@ -275,15 +275,12 @@ const ROLES: Record<string, { label: string; tag: string; text: string }> = {
 type Mode = "simple" | "extended";
 
 export function SettlementChainDiagram() {
-  const [mode, setMode] = useState<Mode>("extended");
+  const [mode, setMode] = useState<Mode>("simple");
   const [selected, setSelected] = useState<string | null>(null);
   const [playing, setPlaying] = useState(true);
-  const [speed, setSpeed] = useState(1);
 
   const playingRef = useRef(playing);
-  const speedRef = useRef(speed);
   playingRef.current = playing;
-  speedRef.current = speed;
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const pathRefs = useRef<Map<string, SVGPathElement>>(new Map());
@@ -325,7 +322,7 @@ export function SettlementChainDiagram() {
 
     function frame(now: number) {
       if (playingRef.current) {
-        accumulated += ((now - last) / 1000) * speedRef.current;
+        accumulated += (now - last) / 1000;
       }
       last = now;
       for (const d of dots) {
@@ -438,21 +435,6 @@ export function SettlementChainDiagram() {
           flex: none;
         }
         .chain-playbtn svg { width: 11px; height: 11px; }
-        .chain-speeds { display: flex; gap: 4px; }
-        .chain-speedbtn {
-          border: 1px solid var(--chain-node-stroke);
-          background: transparent;
-          color: var(--chain-muted);
-          border-radius: 6px;
-          padding: 4px 8px;
-          font: inherit;
-          cursor: pointer;
-        }
-        .chain-speedbtn[aria-pressed="true"] {
-          background: var(--chain-accent);
-          color: var(--chain-accent-ink);
-          border-color: var(--chain-accent);
-        }
         .chain-legend {
           margin-left: auto;
           display: flex;
@@ -651,20 +633,6 @@ export function SettlementChainDiagram() {
               </svg>
             )}
           </button>
-
-          <div className="chain-speeds" role="group" aria-label="Animation speed">
-            {[0.5, 1, 2.5].map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="chain-speedbtn"
-                aria-pressed={speed === s}
-                onClick={() => setSpeed(s)}
-              >
-                {s}×
-              </button>
-            ))}
-          </div>
 
           <div className="chain-legend">
             {spec.legend.map((item) => (

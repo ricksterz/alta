@@ -114,8 +114,8 @@ export function LoginPage() {
             How a security actually moves
           </h2>
           <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500 dark:text-slate-400">
-            Whichever role you pick above is one stop on this chain. Toggle to the simplified
-            version for the short version, or click through the full one below.
+            Whichever role you pick above is one stop on this chain. Toggle to the extended
+            version for the full picture, or click through the short one below.
           </p>
         </div>
         <SettlementChainDiagram />

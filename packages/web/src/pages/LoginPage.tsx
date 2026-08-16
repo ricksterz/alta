@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { api, ApiError } from "../lib/api";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { SettlementChainDiagram } from "../components/SettlementChainDiagram";
 
 // Role selection rather than credentials. Alta is a multi-party product —
 // the same subscription looks different to an advisor, a GP, an administrator,
@@ -46,7 +47,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
+    <div className="flex min-h-screen flex-col items-center gap-10 px-4 py-10 sm:px-6">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex items-start justify-between">
           <div>
@@ -105,6 +106,19 @@ export function LoginPage() {
         <p className="mt-4 text-center text-xs text-slate-400 dark:text-slate-500">
           Demonstration environment — no password required, and all data is synthetic.
         </p>
+      </div>
+
+      <div className="w-full max-w-5xl">
+        <div className="mb-3 text-center">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            How a security actually moves
+          </h2>
+          <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500 dark:text-slate-400">
+            Whichever role you pick above is one stop on this chain. Toggle to the simplified
+            version for the short version, or click through the full one below.
+          </p>
+        </div>
+        <SettlementChainDiagram />
       </div>
     </div>
   );

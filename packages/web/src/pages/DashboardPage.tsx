@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { useAuth } from "../auth/AuthContext";
 import type { InvestorListItem } from "../lib/types";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -30,6 +31,8 @@ function StatusSummary({ counts }: { counts: InvestorListItem["subscriptionStatu
 }
 
 export function DashboardPage() {
+  const { user } = useAuth();
+  const isDirectInvestor = user?.tenantType === "investor_direct";
   const [investors, setInvestors] = useState<InvestorListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,16 +43,26 @@ export function DashboardPage() {
       .catch((err) => setError(err.message));
   }, []);
 
+  // A direct investor's tenant owns exactly one investor record — themselves
+  // — so the list view is just a detour on the way to their own profile.
+  if (isDirectInvestor && investors && investors.length === 1) {
+    return <Navigate to={`/investors/${investors[0].id}`} replace />;
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Investors</h1>
-        <Link
-          to="/investors/new"
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-        >
-          + New investor
-        </Link>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+          {isDirectInvestor ? "My profile" : "Investors"}
+        </h1>
+        {!isDirectInvestor && (
+          <Link
+            to="/investors/new"
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+          >
+            + New investor
+          </Link>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}

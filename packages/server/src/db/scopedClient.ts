@@ -75,9 +75,13 @@ type Scope =
 // Per-model column (or participant relation) to filter on, by caller tenant
 // type. A model/tenantType combination absent here is invisible to that
 // tenant type — see ModelNotVisibleError below.
+// A direct investor is the advisor-side party on its own subscriptions —
+// same tenantId column, same shape as an advisor_firm — so it takes an
+// identical scope everywhere advisor_firm appears below.
 const MULTI_OWNED_MODELS: Record<string, Partial<Record<TenantType, Scope>>> = {
   Subscription: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
     fund_admin: { kind: "participant", relation: "participants", role: "fund_admin" },
     custodian: { kind: "participant", relation: "participants", role: "custodian" },
@@ -88,26 +92,32 @@ const MULTI_OWNED_MODELS: Record<string, Partial<Record<TenantType, Scope>>> = {
   },
   SubscriptionDocument: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   SignatureRequest: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   SignatureBlockFulfillment: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   Position: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   TransferRequest: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
   CapitalCallAllocation: {
     advisor_firm: { kind: "column", column: "tenantId" },
+    investor_direct: { kind: "column", column: "tenantId" },
     sponsor_firm: { kind: "column", column: "sponsorTenantId" },
   },
 };

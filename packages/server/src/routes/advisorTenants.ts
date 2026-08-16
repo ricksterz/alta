@@ -2,9 +2,10 @@ import { Router } from "express";
 import { requireAuth, requireSponsorTenant } from "../middleware/requireAuth.js";
 
 // Sponsor-only lookup for the entitlement-grant screen — searches across
-// ALL advisor tenants on the platform (Tenant is exempt from tenant
-// scoping; that's correct here, not a leak: a sponsor choosing who to grant
-// fund access to needs to see every advisor firm, not just its own).
+// ALL advisor-side tenants on the platform, advisor firms and direct
+// investors alike (Tenant is exempt from tenant scoping; that's correct
+// here, not a leak: a sponsor choosing who to grant fund access to needs to
+// see every advisor-side party, not just its own).
 export const advisorTenantsRouter = Router();
 advisorTenantsRouter.use(requireAuth, requireSponsorTenant);
 
@@ -14,10 +15,10 @@ advisorTenantsRouter.get("/", async (req, res) => {
 
   const tenants = await db.tenant.findMany({
     where: {
-      type: "advisor_firm",
+      type: { in: ["advisor_firm", "investor_direct"] },
       ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true, slug: true, type: true },
     orderBy: { name: "asc" },
     take: 25,
   });

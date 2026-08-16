@@ -618,6 +618,201 @@ async function main() {
     `Seeded ${investorCount} investors, ${subscriptionCount} subscriptions, ` +
       `${documentCount} signed documents, ${positionCount} positions.`
   );
+
+  // --- Direct investor (Phase 9) ---
+  //
+  // Everything above runs through an advisor firm. A direct investor is the
+  // same subscription workflow with no advisor in between: the investor's
+  // own tenant IS the advisor-side party (see scopedClient's investor_direct
+  // entries and requireAdvisorTenant), granted entitlements directly by a GP
+  // the same way an advisor firm would be — see FundAdvisorEntitlement.
+  const directTenant = await prisma.tenant.upsert({
+    where: { slug: "nadia-osei-direct" },
+    update: {},
+    create: {
+      id: "33333333-0000-4000-8000-000000000001",
+      type: "investor_direct",
+      name: "Nadia Osei",
+      slug: "nadia-osei-direct",
+    },
+  });
+
+  const directRep = await prisma.advisorRep.upsert({
+    where: { email: "nadia.osei@direct.test" },
+    update: {},
+    create: {
+      id: "33333333-0000-4000-8000-000000000002",
+      tenantId: directTenant.id,
+      email: "nadia.osei@direct.test",
+      passwordHash,
+      firstName: "Nadia",
+      lastName: "Osei",
+      role: "investor_principal",
+    },
+  });
+
+  const directInvestorId = "33333333-0000-4000-8000-000000000003";
+  await prisma.investor.upsert({
+    where: { id: directInvestorId },
+    update: {},
+    create: {
+      id: directInvestorId,
+      tenantId: directTenant.id,
+      createdByRepId: directRep.id,
+      type: "individual",
+      firstName: "Nadia",
+      lastName: "Osei",
+      email: "nadia.osei@direct.test",
+      phone: "+1-415-555-0199",
+      addressLine1: "88 Telegraph Hill Blvd",
+      city: "San Francisco",
+      state: "CA",
+      postalCode: "94133",
+      country: "United States",
+      // Both accredited AND a qualified purchaser, so her direct access to
+      // a 3(c)(1) fund and a 3(c)(7) fund both exercise the same eligibility
+      // gate an advisor-originated subscription does.
+      accreditationBasis: "individual_net_worth",
+      qualifiedPurchaserBasis: "natural_person_5m",
+      accreditationAttestedAt: new Date("2026-08-01"),
+      qpAttestedAt: new Date("2026-08-01"),
+    },
+  });
+
+  const directPrincipalId = "33333333-0000-4000-8000-000000000004";
+  const existingDirectPrincipal = await prisma.investorPrincipal.findUnique({
+    where: { id: directPrincipalId },
+  });
+  if (!existingDirectPrincipal) {
+    await prisma.investorPrincipal.create({
+      data: {
+        id: directPrincipalId,
+        tenantId: directTenant.id,
+        investorId: directInvestorId,
+        role: "primary",
+        firstName: "Nadia",
+        lastName: "Osei",
+        email: "nadia.osei@direct.test",
+        isPrimaryContact: true,
+      },
+    });
+  }
+
+  const existingDirectTax = await prisma.investorTaxProfile.findUnique({
+    where: { investorId: directInvestorId },
+  });
+  if (!existingDirectTax) {
+    await prisma.investorTaxProfile.create({
+      data: {
+        tenantId: directTenant.id,
+        investorId: directInvestorId,
+        formType: "w9",
+        w9TaxpayerIdType: "ssn",
+        w9TaxpayerId: encryptOptional("555-01-9988"),
+        certifiedAt: new Date("2026-08-01"),
+      },
+    });
+  }
+
+  // Entitle her directly to one 3(c)(1) fund and one 3(c)(7) fund — granted
+  // by each fund's own GP, exactly as an advisor firm would be entitled.
+  const directEntitlements: { fundName: string; sponsorSlug: string; gpEmail: string }[] = [
+    { fundName: "Meridian Growth Fund III", sponsorSlug: "meridian-capital", gpEmail: gpOps.email },
+    {
+      fundName: "Two Sigma Absolute Return Portfolio, LLC",
+      sponsorSlug: "two-sigma-investments-lp",
+      gpEmail: "gpops@twosigma.test",
+    },
+  ];
+  let directEntitlementCount = 0;
+  for (const e of directEntitlements) {
+    const fund = await prisma.fund.findFirst({ where: { name: e.fundName } });
+    const grantor = await prisma.advisorRep.findUnique({ where: { email: e.gpEmail } });
+    if (!fund || !grantor) continue;
+    const already = await prisma.fundAdvisorEntitlement.findFirst({
+      where: { fundId: fund.id, advisorTenantId: directTenant.id },
+    });
+    if (already) continue;
+    await prisma.fundAdvisorEntitlement.create({
+      data: {
+        sponsorTenantId: fund.sponsorTenantId,
+        fundId: fund.id,
+        advisorTenantId: directTenant.id,
+        grantedByRepId: grantor.id,
+        status: "active",
+      },
+    });
+    directEntitlementCount++;
+  }
+
+  const directSubscriptions: {
+    idSuffix: string;
+    fundName: string;
+    amount: number;
+    status: "pending_investor_data" | "funded";
+  }[] = [
+    { idSuffix: "a1", fundName: "Meridian Growth Fund III", amount: 300_000, status: "pending_investor_data" },
+    {
+      idSuffix: "a2",
+      fundName: "Two Sigma Absolute Return Portfolio, LLC",
+      amount: 1_500_000,
+      status: "funded",
+    },
+  ];
+  let directSubscriptionCount = 0;
+  let directDocumentCount = 0;
+  let directPositionCount = 0;
+  for (const sub of directSubscriptions) {
+    const fund = await prisma.fund.findFirst({ where: { name: sub.fundName } });
+    if (!fund) continue;
+    const subId = `33333333-0000-4000-8000-0000000000${sub.idSuffix}`;
+    const already = await prisma.subscription.findUnique({ where: { id: subId } });
+
+    if (!already) {
+      const close = await prisma.fundClose.findFirst({
+        where: { fundId: fund.id, status: "open" },
+        orderBy: { closeDate: "asc" },
+      });
+      await prisma.subscription.create({
+        data: {
+          id: subId,
+          tenantId: directTenant.id,
+          sponsorTenantId: fund.sponsorTenantId,
+          investorId: directInvestorId,
+          fundId: fund.id,
+          fundCloseId: close?.id ?? null,
+          amount: sub.amount,
+          status: sub.status,
+          createdByRepId: directRep.id,
+          submittedAt: new Date("2026-08-05"),
+          decidedAt: sub.status === "funded" ? new Date("2026-08-08") : null,
+          fundedAt: sub.status === "funded" ? new Date("2026-08-10") : null,
+        },
+      });
+      directSubscriptionCount++;
+
+      if (fund.fundAdminTenantId) {
+        await prisma.subscriptionParticipant.create({
+          data: { subscriptionId: subId, tenantId: fund.fundAdminTenantId, role: "fund_admin" },
+        });
+      }
+    }
+
+    if (sub.status === "funded") {
+      const seeded = await seedDocumentAndSignatures(prisma, subId, {
+        generatedAt: new Date("2026-08-06"),
+        signedAt: new Date("2026-08-07"),
+      });
+      if (seeded) directDocumentCount++;
+      await openPositionForSubscription(subId);
+      directPositionCount++;
+    }
+  }
+
+  console.log(
+    `Seeded direct investor: ${directRep.email} / ${DEV_PASSWORD} — ${directEntitlementCount} entitlements, ` +
+      `${directSubscriptionCount} subscriptions, ${directDocumentCount} signed documents, ${directPositionCount} positions.`
+  );
 }
 
 main()

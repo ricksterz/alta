@@ -644,15 +644,17 @@ subscriptionsRouter.post("/:id/signatures/:sigId/sign", async (req, res) => {
   }
 
   // Role gate: the GP countersignature belongs to the sponsor tenant, investor
-  // signatures to the advisor tenant. Without this, either side could sign the
+  // signatures to the advisor-side tenant (an advisor firm, or the investor
+  // themselves when going direct). Without this, either side could sign the
   // other's block.
-  const expectedTenantType = signature.role === "gp_countersigner" ? "sponsor_firm" : "advisor_firm";
-  if (ctx.tenantType !== expectedTenantType) {
+  const isAdvisorSide = ctx.tenantType === "advisor_firm" || ctx.tenantType === "investor_direct";
+  const allowed = signature.role === "gp_countersigner" ? ctx.tenantType === "sponsor_firm" : isAdvisorSide;
+  if (!allowed) {
     return res.status(403).json({
       error:
         signature.role === "gp_countersigner"
           ? "Only the fund sponsor can countersign"
-          : "Only the advisor firm can capture investor signatures",
+          : "Only the advisor firm or the investor themselves can capture investor signatures",
     });
   }
 

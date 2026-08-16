@@ -474,8 +474,12 @@ fundsRouter.post("/:id/entitlements", async (req, res) => {
     return res.status(404).json({ error: "Fund not found" });
   }
 
+  // "advisorTenantId" also accepts an investor_direct tenant: a GP granting
+  // access directly to one investor uses the same entitlement mechanism as
+  // granting it to an advisor firm — see FundAdvisorEntitlement's schema
+  // comment.
   const advisorTenant = await ctx.db.tenant.findFirst({
-    where: { id: parsed.data.advisorTenantId, type: "advisor_firm" },
+    where: { id: parsed.data.advisorTenantId, type: { in: ["advisor_firm", "investor_direct"] } },
   });
   if (!advisorTenant) {
     return res.status(400).json({ error: "Advisor tenant not found" });

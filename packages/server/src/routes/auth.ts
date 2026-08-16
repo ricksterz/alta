@@ -133,6 +133,11 @@ export const DEMO_PERSONAS: DemoPersona[] = [
     description: "Onboards investors and originates subscriptions on their behalf.",
   },
   {
+    email: "nadia.osei@direct.test",
+    label: "Investor (direct)",
+    description: "Subscribes on their own behalf — no advisor firm in between.",
+  },
+  {
     email: "gpops@ares.test",
     label: "Fund Sponsor (GP)",
     description: "Runs the funds — sets terms and share classes, countersigns, accepts.",

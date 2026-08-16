@@ -659,13 +659,13 @@ export function FundDetailPage() {
         {/* --- Advisor entitlements --- */}
         <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Advisor entitlements
+            Entitlements
           </h2>
 
           <div className="relative mb-4">
             <input
               className="w-full rounded border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:border-slate-500 dark:focus:border-slate-400 focus:outline-none"
-              placeholder="Search advisor firms to grant access…"
+              placeholder="Search advisor firms or direct investors to grant access…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -679,7 +679,14 @@ export function FundDetailPage() {
                       disabled={alreadyGrantedIds.has(t.id)}
                       className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800 disabled:text-slate-300"
                     >
-                      {t.name}
+                      <span>
+                        {t.name}
+                        {t.type === "investor_direct" && (
+                          <span className="ml-2 rounded bg-violet-50 dark:bg-violet-950 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                            Direct
+                          </span>
+                        )}
+                      </span>
                       <span className="text-xs text-slate-400 dark:text-slate-500">
                         {alreadyGrantedIds.has(t.id) ? "already granted" : "grant"}
                       </span>

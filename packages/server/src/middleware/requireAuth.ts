@@ -47,8 +47,12 @@ export function requireSponsorTenant(req: Request, res: Response, next: NextFunc
   next();
 }
 
+// "Advisor-side" now covers two tenant types: an advisor firm acting for its
+// clients, and a direct investor acting for themselves. Both originate their
+// own subscriptions the same way — the routes gated here don't need to know
+// which one they're talking to.
 export function requireAdvisorTenant(req: Request, res: Response, next: NextFunction) {
-  if (req.ctx?.tenantType !== "advisor_firm") {
+  if (req.ctx?.tenantType !== "advisor_firm" && req.ctx?.tenantType !== "investor_direct") {
     return res.status(403).json({ error: "Advisor tenant required" });
   }
   next();

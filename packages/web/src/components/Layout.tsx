@@ -10,6 +10,7 @@ const ROLE_LABELS: Record<string, string> = {
   fund_admin_ops: "Fund Admin",
   legal_ops: "Legal",
   custodian_ops: "Custodian",
+  investor_principal: "Investor",
 };
 
 export function Layout() {

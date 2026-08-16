@@ -32,7 +32,9 @@ describe("separation of duties", () => {
       ["pending_investor_data", "pending_signatures", "pending_gp_countersign"].includes(t.to)
     );
     for (const rule of advisorSteps) {
-      expect(rule.actors).toEqual(["advisor_firm"]);
+      // Advisor-side only: an advisor firm acting for a client, or a direct
+      // investor acting for themselves. Never a sponsor or administrator.
+      expect(rule.actors).toEqual(["advisor_firm", "investor_direct"]);
     }
   });
 

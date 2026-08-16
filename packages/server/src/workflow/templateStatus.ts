@@ -58,6 +58,7 @@ export const TRANSITIONS: TransitionRule[] = [
 
 const ACTOR_LABELS: Record<TenantType, string> = {
   advisor_firm: "advisor firm",
+  investor_direct: "investor",
   sponsor_firm: "fund sponsor",
   fund_admin: "fund administrator",
   fund_legal: "fund counsel",

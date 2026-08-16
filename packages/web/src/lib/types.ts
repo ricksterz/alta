@@ -41,14 +41,27 @@ export type SubscriptionStatus =
   | "rejected"
   | "funded";
 
-export type TenantType = "advisor_firm" | "sponsor_firm" | "fund_admin" | "fund_legal" | "custodian";
+export type TenantType =
+  | "advisor_firm"
+  | "sponsor_firm"
+  | "fund_admin"
+  | "fund_legal"
+  | "custodian"
+  | "investor_direct";
 
 export interface AdvisorRepSummary {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: "advisor_rep" | "advisor_admin" | "gp_ops" | "fund_admin_ops" | "legal_ops" | "custodian_ops";
+  role:
+    | "advisor_rep"
+    | "advisor_admin"
+    | "gp_ops"
+    | "fund_admin_ops"
+    | "legal_ops"
+    | "custodian_ops"
+    | "investor_principal";
   tenantId: string;
   tenantType: TenantType;
 }
@@ -222,6 +235,7 @@ export interface AdvisorTenantSummary {
   id: string;
   name: string;
   slug: string;
+  type: TenantType;
 }
 
 export interface InvestorListItem {

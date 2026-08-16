@@ -31,23 +31,24 @@ export interface TransitionSubject {
 }
 
 export const TRANSITIONS: TransitionRule[] = [
-  // --- Advisor side ---
+  // --- Advisor side (an advisor firm acting for a client, or a direct
+  // investor acting for themselves — see requireAdvisorTenant) ---
   {
     from: "draft",
     to: "pending_investor_data",
-    actors: ["advisor_firm"],
+    actors: ["advisor_firm", "investor_direct"],
     label: "Subscription started",
   },
   {
     from: "pending_investor_data",
     to: "pending_signatures",
-    actors: ["advisor_firm"],
+    actors: ["advisor_firm", "investor_direct"],
     label: "Document generated and sent for signature",
   },
   {
     from: "pending_signatures",
     to: "pending_gp_countersign",
-    actors: ["advisor_firm"],
+    actors: ["advisor_firm", "investor_direct"],
     label: "Investor signature(s) complete",
   },
 
@@ -99,6 +100,7 @@ export class TransitionError extends Error {
 
 const ACTOR_LABELS: Record<TenantType, string> = {
   advisor_firm: "advisor firm",
+  investor_direct: "investor",
   sponsor_firm: "fund sponsor",
   fund_admin: "fund administrator",
   fund_legal: "fund counsel",
@@ -107,19 +109,31 @@ const ACTOR_LABELS: Record<TenantType, string> = {
 
 /**
  * Resolves which single tenant type may perform a transition on THIS
- * subscription. For a step listing more than one actor, whichever is engaged
- * takes exclusive responsibility, in the order listed on the rule —
- * otherwise more than one party could act and the record would not show who
- * actually owns the step.
+ * subscription. Multi-actor rules come in two different flavors:
+ *
+ *  - Optional-party rules (fund_admin/custodian alongside sponsor_firm):
+ *    whichever party is actually engaged on THIS subscription takes
+ *    exclusive responsibility, resolved from subscription state — a
+ *    sponsor_firm caller must still be rejected when a fund admin is
+ *    engaged, regardless of who's asking.
+ *  - Equivalent-role rules (advisor_firm / investor_direct): both are
+ *    unconditionally valid, and scopedClient already confines the caller to
+ *    its own subscription, so there's no ambiguity to resolve from state —
+ *    the effective actor is simply whichever listed type the caller is.
  */
 export function effectiveActor(
   rule: TransitionRule,
-  subject: TransitionSubject
+  subject: TransitionSubject,
+  actor?: TenantType
 ): TenantType {
   if (rule.actors.length === 1) return rule.actors[0];
-  if (rule.actors.includes("custodian") && subject.custodianTenantId) return "custodian";
-  if (rule.actors.includes("fund_admin") && subject.fundAdminTenantId) return "fund_admin";
-  return "sponsor_firm";
+  if (rule.actors.includes("custodian") || rule.actors.includes("fund_admin")) {
+    if (rule.actors.includes("custodian") && subject.custodianTenantId) return "custodian";
+    if (rule.actors.includes("fund_admin") && subject.fundAdminTenantId) return "fund_admin";
+    return "sponsor_firm";
+  }
+  if (actor && rule.actors.includes(actor)) return actor;
+  return rule.actors[0];
 }
 
 export function assertTransition(
@@ -135,7 +149,7 @@ export function assertTransition(
         `Valid next states: ${allowedNext(from).join(", ") || "none (terminal)"}.`
     );
   }
-  const required = effectiveActor(rule, subject);
+  const required = effectiveActor(rule, subject, actor);
   if (required !== actor) {
     throw new TransitionError(
       `This transition is performed by the ${ACTOR_LABELS[required]}, not by you.`,

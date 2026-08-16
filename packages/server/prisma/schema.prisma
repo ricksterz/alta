@@ -44,6 +44,7 @@ enum TenantType {
   fund_admin // fund administrator (Gen II, Citco, Alter Domus, …)
   fund_legal // outside counsel — drafts/blesses subscription docs
   custodian // holds the LP's assets; confirms funding (Schwab, Fidelity, Millennium Trust, …)
+  investor_direct // an investor subscribing on their own behalf, with no advisor firm in between
 }
 
 model Tenant {
@@ -96,6 +97,7 @@ enum AdvisorRole {
   fund_admin_ops
   legal_ops
   custodian_ops
+  investor_principal // an investor_direct tenant's own login — the investor acting for themselves
 }
 
 model AdvisorRep {

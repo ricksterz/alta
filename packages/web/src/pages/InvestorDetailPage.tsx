@@ -145,7 +145,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</dt>
-      <dd className="text-sm text-slate-800 dark:text-slate-200">{value}</dd>
+      <dd className="break-words text-sm text-slate-800 dark:text-slate-200">{value}</dd>
     </div>
   );
 }
@@ -335,43 +335,45 @@ export function InvestorDetailPage() {
         {investor.subscriptions.length === 0 ? (
           <p className="text-sm text-slate-400 dark:text-slate-500">No subscriptions yet.</p>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
-              <tr>
-                <th className="py-2">Fund</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Amount</th>
-                <th className="py-2">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {investor.subscriptions.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
-                  <td className="py-2">
-                    <Link
-                      to={`/subscriptions/${s.id}`}
-                      className="font-medium text-slate-900 dark:text-slate-100 hover:underline"
-                    >
-                      {s.fund.name}
-                    </Link>
-                  </td>
-                  <td className="py-2">
-                    <StatusBadge status={s.status} />
-                  </td>
-                  <td className="py-2 tabular-nums">
-                    {s.amount
-                      ? Number(s.amount).toLocaleString("en-US", {
-                          style: "currency",
-                          currency: "USD",
-                          maximumFractionDigits: 0,
-                        })
-                      : "—"}
-                  </td>
-                  <td className="py-2">{new Date(s.createdAt).toLocaleDateString()}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
+                <tr>
+                  <th className="py-2">Fund</th>
+                  <th className="py-2">Status</th>
+                  <th className="py-2">Amount</th>
+                  <th className="py-2">Created</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {investor.subscriptions.map((s) => (
+                  <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <td className="py-2">
+                      <Link
+                        to={`/subscriptions/${s.id}`}
+                        className="font-medium text-slate-900 dark:text-slate-100 hover:underline"
+                      >
+                        {s.fund.name}
+                      </Link>
+                    </td>
+                    <td className="py-2">
+                      <StatusBadge status={s.status} />
+                    </td>
+                    <td className="py-2 tabular-nums">
+                      {s.amount
+                        ? Number(s.amount).toLocaleString("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                            maximumFractionDigits: 0,
+                          })
+                        : "—"}
+                    </td>
+                    <td className="py-2">{new Date(s.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

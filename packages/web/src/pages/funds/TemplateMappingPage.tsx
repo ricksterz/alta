@@ -284,7 +284,7 @@ export function TemplateMappingPage() {
           the PDF has no fillable fields.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6">
           <table className="w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
               <tr>

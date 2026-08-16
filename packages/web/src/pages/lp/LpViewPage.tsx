@@ -69,26 +69,28 @@ export function LpViewPage() {
               {view.positions.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500">No holdings yet.</p>
               ) : (
-                <table className="w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
-                    <tr>
-                      <th className="py-2">Fund</th>
-                      <th className="py-2">Committed</th>
-                      <th className="py-2">Funded</th>
-                      <th className="py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {view.positions.map((p) => (
-                      <tr key={p.id}>
-                        <td className="py-2 font-medium text-slate-800 dark:text-slate-200">{p.fundName}</td>
-                        <td className="py-2 tabular-nums text-slate-600 dark:text-slate-400">{money(p.commitmentAmount)}</td>
-                        <td className="py-2 tabular-nums text-slate-600 dark:text-slate-400">{money(p.fundedAmount)}</td>
-                        <td className="py-2 capitalize text-slate-600 dark:text-slate-400">{p.status.replace(/_/g, " ")}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
+                      <tr>
+                        <th className="py-2">Fund</th>
+                        <th className="py-2">Committed</th>
+                        <th className="py-2">Funded</th>
+                        <th className="py-2">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {view.positions.map((p) => (
+                        <tr key={p.id}>
+                          <td className="py-2 font-medium text-slate-800 dark:text-slate-200">{p.fundName}</td>
+                          <td className="py-2 tabular-nums text-slate-600 dark:text-slate-400">{money(p.commitmentAmount)}</td>
+                          <td className="py-2 tabular-nums text-slate-600 dark:text-slate-400">{money(p.fundedAmount)}</td>
+                          <td className="py-2 capitalize text-slate-600 dark:text-slate-400">{p.status.replace(/_/g, " ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </section>
 
@@ -99,26 +101,28 @@ export function LpViewPage() {
               {view.subscriptions.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500">No subscriptions yet.</p>
               ) : (
-                <table className="w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
-                    <tr>
-                      <th className="py-2">Fund</th>
-                      <th className="py-2">Amount</th>
-                      <th className="py-2">Status</th>
-                      <th className="py-2">Started</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {view.subscriptions.map((s) => (
-                      <tr key={s.id}>
-                        <td className="py-2 font-medium text-slate-800 dark:text-slate-200">{s.fundName}</td>
-                        <td className="py-2 tabular-nums text-slate-600 dark:text-slate-400">{money(s.amount)}</td>
-                        <td className="py-2 text-slate-600 dark:text-slate-400">{STATUS_LABELS[s.status] ?? s.status}</td>
-                        <td className="py-2 text-slate-600 dark:text-slate-400">{new Date(s.createdAt).toLocaleDateString()}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-xs uppercase text-slate-400 dark:text-slate-500">
+                      <tr>
+                        <th className="py-2">Fund</th>
+                        <th className="py-2">Amount</th>
+                        <th className="py-2">Status</th>
+                        <th className="py-2">Started</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {view.subscriptions.map((s) => (
+                        <tr key={s.id}>
+                          <td className="py-2 font-medium text-slate-800 dark:text-slate-200">{s.fundName}</td>
+                          <td className="py-2 tabular-nums text-slate-600 dark:text-slate-400">{money(s.amount)}</td>
+                          <td className="py-2 text-slate-600 dark:text-slate-400">{STATUS_LABELS[s.status] ?? s.status}</td>
+                          <td className="py-2 text-slate-600 dark:text-slate-400">{new Date(s.createdAt).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </section>
 

@@ -360,7 +360,7 @@ export function InvestorWizardPage() {
               <label className={labelClass()}>Address</label>
               <input className={inputClass()} value={profile.addressLine1} onChange={(e) => update("addressLine1", e.target.value)} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <input className={inputClass()} placeholder="City" value={profile.city} onChange={(e) => update("city", e.target.value)} />
               <input className={inputClass()} placeholder="State" value={profile.state} onChange={(e) => update("state", e.target.value)} />
               <input className={inputClass()} placeholder="Postal code" value={profile.postalCode} onChange={(e) => update("postalCode", e.target.value)} />

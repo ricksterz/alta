@@ -32,66 +32,69 @@ export function Layout() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-800">
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-6">
-            <Link to="/" className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3 py-4">
+            <Link to="/" className="shrink-0 text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
               Alta
             </Link>
-            {user && (
-              <nav className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-                {isSponsor && (
-                  <Link to="/funds" className="hover:text-slate-900 dark:hover:text-slate-100">
-                    Funds
-                  </Link>
-                )}
-                {!isSponsor && !isFundAdmin && !isFundLegal && !isCustodian && (
-                  <Link to="/investors" className="hover:text-slate-900 dark:hover:text-slate-100">
-                    Investors
-                  </Link>
-                )}
-                {isFundLegal && (
-                  <Link to="/templates" className="hover:text-slate-900 dark:hover:text-slate-100">
-                    Legal review
-                  </Link>
-                )}
-                {!isFundLegal && (
-                  <Link to="/subscriptions" className="hover:text-slate-900 dark:hover:text-slate-100">
-                    Subscriptions
-                  </Link>
-                )}
-                {canSeePositions && (
-                  <Link to="/register" className="hover:text-slate-900 dark:hover:text-slate-100">
-                    Register
-                  </Link>
-                )}
-                <Link to="/audit" className="hover:text-slate-900 dark:hover:text-slate-100">
-                  Audit
-                </Link>
-              </nav>
-            )}
-          </div>
-          <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
-            <ThemeToggle />
-            {user && (
-              <>
-                <span>
-                  {user.firstName} {user.lastName}
-                  <span className="ml-2 rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-slate-600 dark:text-slate-400 sm:gap-4">
+              <ThemeToggle />
+              {user && (
+                <>
+                  <span className="hidden truncate sm:inline">
+                    {user.firstName} {user.lastName}
+                    <span className="ml-2 rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                      {ROLE_LABELS[user.role] ?? user.role}
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-500 dark:text-slate-400 sm:hidden">
                     {ROLE_LABELS[user.role] ?? user.role}
                   </span>
-                </span>
-                <button
-                  onClick={handleLogout}
-                  className="rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  Switch role
-                </button>
-              </>
-            )}
+                  <button
+                    onClick={handleLogout}
+                    className="shrink-0 rounded border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Switch role
+                  </button>
+                </>
+              )}
+            </div>
           </div>
+          {user && (
+            <nav className="-mx-4 flex items-center gap-4 overflow-x-auto whitespace-nowrap px-4 pb-3 text-sm text-slate-600 dark:text-slate-400 sm:mx-0 sm:px-0">
+              {isSponsor && (
+                <Link to="/funds" className="hover:text-slate-900 dark:hover:text-slate-100">
+                  Funds
+                </Link>
+              )}
+              {!isSponsor && !isFundAdmin && !isFundLegal && !isCustodian && (
+                <Link to="/investors" className="hover:text-slate-900 dark:hover:text-slate-100">
+                  Investors
+                </Link>
+              )}
+              {isFundLegal && (
+                <Link to="/templates" className="hover:text-slate-900 dark:hover:text-slate-100">
+                  Legal review
+                </Link>
+              )}
+              {!isFundLegal && (
+                <Link to="/subscriptions" className="hover:text-slate-900 dark:hover:text-slate-100">
+                  Subscriptions
+                </Link>
+              )}
+              {canSeePositions && (
+                <Link to="/register" className="hover:text-slate-900 dark:hover:text-slate-100">
+                  Register
+                </Link>
+              )}
+              <Link to="/audit" className="hover:text-slate-900 dark:hover:text-slate-100">
+                Audit
+              </Link>
+            </nav>
+          )}
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         <Outlet />
       </main>
       <SiteFooter />

@@ -46,7 +46,7 @@ export function RegisterPage() {
       {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
 
       {positions && positions.length > 0 && (
-        <div className="mb-6 flex gap-4">
+        <div className="mb-6 flex flex-wrap gap-4">
           <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-4">
             <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Positions</div>
             <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">

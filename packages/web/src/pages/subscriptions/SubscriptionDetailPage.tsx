@@ -294,8 +294,8 @@ export function SubscriptionDetailPage() {
               <dl className="mb-4 space-y-1">
                 {Object.entries(doc.fieldValues).map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-4 text-sm">
-                    <dt className="text-slate-500 dark:text-slate-400">{k}</dt>
-                    <dd className="text-right font-medium text-slate-800 dark:text-slate-200">{v}</dd>
+                    <dt className="shrink-0 text-slate-500 dark:text-slate-400">{k}</dt>
+                    <dd className="break-words text-right font-medium text-slate-800 dark:text-slate-200">{v}</dd>
                   </div>
                 ))}
               </dl>

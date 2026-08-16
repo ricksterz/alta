@@ -52,12 +52,30 @@ interface LegendItem {
   label: string;
 }
 
+// Decorative, non-interactive fan-out — used once, to show a single fund's
+// capital reaching many portfolio companies without needing a full node (and
+// a full detail-panel entry) per company.
+interface Decoration {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  r: number;
+}
+
+interface SectionCaption {
+  x: number;
+  y: number;
+  text: string;
+}
+
 interface DiagramSpec {
   viewBox: string;
   minWidth: number;
   nodes: DiagramNode[];
   edges: DiagramEdge[];
   captions: DiagramCaption[];
+  sectionCaptions?: SectionCaption[];
+  decorations?: Decoration[];
   particleLanes: ParticleLane[];
   legend: LegendItem[];
 }
@@ -103,7 +121,7 @@ const SIMPLE: DiagramSpec = {
 };
 
 const EXTENDED: DiagramSpec = {
-  viewBox: "0 0 1930 580",
+  viewBox: "0 0 1930 980",
   minWidth: 1180,
   captions: [
     { x: 90, y: 62, text: "via an advisor" },
@@ -112,6 +130,7 @@ const EXTENDED: DiagramSpec = {
     { x: 1820, y: 82, text: "later, on transfer" },
     { x: 1820, y: 502, text: "annual, after funding" },
   ],
+  sectionCaptions: [{ x: 1000, y: 640, text: "capital deployment, once funded — across every LP, not per subscription" }],
   nodes: [
     { role: "investor-advised", x: 90, y: 110, w: 156, h: 60, tag: "party 1a", label: "Investor" },
     { role: "advisor", x: 340, y: 110, w: 144, h: 60, tag: "party 2a", label: "Advisor" },
@@ -126,9 +145,12 @@ const EXTENDED: DiagramSpec = {
     { role: "position", x: 1540, y: 300, w: 170, h: 64, rx: 32, tag: "settled", label: "On-Chain Position", labelFontSize: 13, terminal: true },
     { role: "secondary", x: 1820, y: 150, w: 180, h: 60, tag: "party 7", label: "Secondary Transferee", labelFontSize: 13 },
     { role: "auditor", x: 1820, y: 450, w: 176, h: 60, tag: "party 8", label: "Auditor / K-1", labelFontSize: 13.5 },
+    { role: "master-fund", x: 820, y: 820, w: 170, h: 60, tag: "optional hop", label: "Master Fund", labelFontSize: 13.5 },
+    { role: "portfolio", x: 1180, y: 820, w: 190, h: 64, rx: 32, tag: "destination", label: "Portfolio Investments", labelFontSize: 12.5, terminal: true },
   ],
   edges: [
     { id: "edgeAdvisor", kind: "lane-a", d: "M 168 110 C 320 110, 460 200, 526 300" },
+    { id: "edgeAdvisorToPlacement", kind: "gate", d: "M 340 140 L 340 270" },
     { id: "edgePlacement", kind: "lane-c", d: "M 168 300 L 526 300" },
     { id: "edgeDirect", kind: "lane-b", d: "M 168 490 C 320 490, 460 420, 526 300" },
     { id: "edgeGate", kind: "gate", d: "M 610 87 L 610 268" },
@@ -138,9 +160,13 @@ const EXTENDED: DiagramSpec = {
     { id: "edgeTrunk4", kind: "trunk", d: "M 1390 300 L 1455 300" },
     { id: "edgeSecondary", kind: "gate", d: "M 1625 300 C 1700 300, 1700 150, 1730 150" },
     { id: "edgeAudit", kind: "gate", d: "M 1625 300 C 1700 300, 1700 450, 1732 450" },
+    { id: "edgeDeployDirect", kind: "trunk", d: "M 610 332 C 700 550, 950 700, 1085 800" },
+    { id: "edgeDeployViaMaster", kind: "gate", d: "M 610 332 C 650 550, 780 700, 820 790" },
+    { id: "edgeMasterToPortfolio", kind: "gate", d: "M 905 820 C 970 820, 1030 830, 1085 840" },
   ],
   particleLanes: [
     { edgeId: "edgeAdvisor", cls: "lane-a", count: 3, duration: 3.2, radius: 3.6, phase: 0 },
+    { edgeId: "edgeAdvisorToPlacement", cls: "gate", count: 1, duration: 3.5, radius: 2.6, phase: 0.4 },
     { edgeId: "edgePlacement", cls: "lane-c", count: 3, duration: 3.2, radius: 3.6, phase: 0.5 },
     { edgeId: "edgeDirect", cls: "lane-b", count: 3, duration: 3.2, radius: 3.6, phase: 0.33 },
     { edgeId: "edgeTrunk1", cls: "trunk", count: 3, duration: 1.4, radius: 3.6, phase: 0 },
@@ -150,11 +176,20 @@ const EXTENDED: DiagramSpec = {
     { edgeId: "edgeGate", cls: "gate", count: 1, duration: 4.5, radius: 2.6, phase: 0 },
     { edgeId: "edgeSecondary", cls: "gate", count: 1, duration: 5.5, radius: 2.8, phase: 0.2 },
     { edgeId: "edgeAudit", cls: "gate", count: 1, duration: 6, radius: 2.8, phase: 0.6 },
+    { edgeId: "edgeDeployDirect", cls: "capital", count: 3, duration: 2.6, radius: 3.6, phase: 0 },
+    { edgeId: "edgeDeployViaMaster", cls: "gate", count: 1, duration: 4, radius: 2.6, phase: 0.1 },
+    { edgeId: "edgeMasterToPortfolio", cls: "gate", count: 1, duration: 2, radius: 2.6, phase: 0.5 },
+  ],
+  decorations: [
+    { id: "sat1", from: { x: 1275, y: 800 }, to: { x: 1400, y: 750 }, r: 9 },
+    { id: "sat2", from: { x: 1275, y: 820 }, to: { x: 1420, y: 820 }, r: 9 },
+    { id: "sat3", from: { x: 1275, y: 840 }, to: { x: 1400, y: 890 }, r: 9 },
   ],
   legend: [
     { color: "var(--chain-accent-2)", label: "direct" },
     { color: "var(--chain-accent)", label: "via advisor" },
     { color: "var(--chain-accent-3)", label: "via placement agent" },
+    { color: "var(--chain-accent-4)", label: "capital deployed" },
     { color: "var(--chain-muted)", label: "occasional / gating" },
   ],
 };
@@ -177,13 +212,13 @@ const ROLES: Record<string, { label: string; tag: string; text: string }> = {
   },
   advisor: {
     label: "Advisor",
-    tag: "party 2",
-    text: "Onboards the investor, generates the subscription document from the fund's template, and collects the investor's signature. Cannot accept, reject, or fund its own subscription — that separation of duties is enforced, not just implied. Represents the investor's side of the relationship.",
+    tag: "party 2a",
+    text: "Onboards the investor, generates the subscription document from the fund's template, and collects the investor's signature. Cannot accept, reject, or fund its own subscription — that separation of duties is enforced, not just implied. Represents the investor's side of the relationship. Reaches the sponsor directly most of the time, but a capacity-constrained fund sometimes only takes allocations through the placement agent it has engaged — the dashed link down to Placement Agent.",
   },
   "placement-agent": {
     label: "Placement Agent",
     tag: "party 2b",
-    text: "A paid distribution channel that introduces prospective investors to the fund, compensated by the sponsor with a placement fee. The mirror image of an advisor: an advisor represents the investor; a placement agent represents the fund it's placing.",
+    text: "A paid distribution channel that introduces prospective investors to the fund, compensated by the sponsor with a placement fee. The mirror image of an advisor: an advisor represents the investor; a placement agent represents the fund it's placing. Reachable two ways — directly by an investor with no advisor at all, or as the route an advisor is sometimes required to use to access a specific fund.",
   },
   counsel: {
     label: "Fund Counsel",
@@ -224,6 +259,16 @@ const ROLES: Record<string, { label: string; tag: string; text: string }> = {
     label: "Auditor / K-1",
     tag: "party 8 — annual, after funding",
     text: "Performs the fund's annual financial statement audit and prepares each investor's K-1 tax reporting. Not part of any single subscription — an ongoing, once-a-year relationship that starts only after a position is funded.",
+  },
+  "master-fund": {
+    label: "Master Fund",
+    tag: "optional — feeder structure",
+    text: "In a master-feeder structure, LPs actually subscribe to a feeder fund — what 'Fund Sponsor' represents on this diagram — which pools their capital and invests it into a separate master fund. The master is the entity that actually deploys into the underlying investments; the feeder itself never touches one directly. Most funds skip this hop and invest straight from the fund an LP subscribed to — this path only applies to the ones that don't.",
+  },
+  portfolio: {
+    label: "Portfolio Investments",
+    tag: "many — depends on strategy",
+    text: "Where committed capital actually goes to work, decided by the GP under the fund's stated strategy — and what that is varies enormously: operating companies or startups for a PE or venture fund, physical real estate or infrastructure for a real-assets fund, a diversified book of loans for a credit strategy, digital assets for a crypto-focused one. This is the one part of the chain Alta doesn't track — subscription execution ends once a position is funded; what the fund does with the capital afterward is portfolio management, a different system entirely.",
   },
 };
 
@@ -313,6 +358,7 @@ export function SettlementChainDiagram() {
           --chain-accent-ink: #fff8ea;
           --chain-accent-2: #1a9585;
           --chain-accent-3: #b8503c;
+          --chain-accent-4: #3f8452;
           --chain-line: #ddd3ba;
           --chain-node-stroke: #cdbf9c;
           --chain-shadow: rgba(120, 100, 60, 0.18);
@@ -327,6 +373,7 @@ export function SettlementChainDiagram() {
           --chain-accent-ink: #2a1c04;
           --chain-accent-2: #45c9b8;
           --chain-accent-3: #d98a7a;
+          --chain-accent-4: #7fc98e;
           --chain-line: #2a3352;
           --chain-node-stroke: #3a466e;
           --chain-shadow: rgba(0, 0, 0, 0.45);
@@ -443,6 +490,7 @@ export function SettlementChainDiagram() {
         .chain-particle-lane-a { fill: var(--chain-accent); }
         .chain-particle-lane-b { fill: var(--chain-accent-2); }
         .chain-particle-lane-c { fill: var(--chain-accent-3); }
+        .chain-particle-capital { fill: var(--chain-accent-4); }
         .chain-particle-trunk { fill: var(--chain-accent); }
         .chain-particle-gate { fill: var(--chain-muted); }
         .chain-node { cursor: pointer; }
@@ -482,6 +530,33 @@ export function SettlementChainDiagram() {
         @keyframes chain-pulse {
           0% { opacity: 0.55; stroke-width: 3; r: 34; }
           100% { opacity: 0; stroke-width: 0.5; r: 58; }
+        }
+        .chain-satellite-line {
+          fill: none;
+          stroke: var(--chain-line);
+          stroke-width: 1.3;
+        }
+        .chain-satellite-dot {
+          fill: var(--chain-accent-4);
+        }
+        .chain-satellite-ring {
+          fill: none;
+          stroke: var(--chain-accent-4);
+          stroke-width: 1.2;
+          opacity: 0;
+          transform-origin: center;
+          animation: chain-pulse-small 2.4s ease-out infinite;
+        }
+        @keyframes chain-pulse-small {
+          0% { opacity: 0.5; stroke-width: 2; r: 9; }
+          100% { opacity: 0; stroke-width: 0.4; r: 20; }
+        }
+        .chain-section-caption {
+          font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+          font-size: 10.5px;
+          letter-spacing: 0.08em;
+          fill: var(--chain-muted);
+          text-transform: uppercase;
         }
         .chain-caption {
           font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -526,8 +601,8 @@ export function SettlementChainDiagram() {
         }
         @media (prefers-reduced-motion: reduce) {
           .chain-particle-lane-a, .chain-particle-lane-b, .chain-particle-lane-c,
-          .chain-particle-trunk, .chain-particle-gate { display: none; }
-          .chain-ring { animation: none; }
+          .chain-particle-trunk, .chain-particle-gate, .chain-particle-capital { display: none; }
+          .chain-ring, .chain-satellite-ring { animation: none; }
           .chain-svg { animation: none; }
         }
         @media (max-width: 720px) {
@@ -616,6 +691,20 @@ export function SettlementChainDiagram() {
               <text key={c.text} x={c.x} y={c.y} textAnchor="middle" className="chain-caption">
                 {c.text}
               </text>
+            ))}
+
+            {spec.sectionCaptions?.map((c) => (
+              <text key={c.text} x={c.x} y={c.y} textAnchor="middle" className="chain-section-caption">
+                {c.text}
+              </text>
+            ))}
+
+            {spec.decorations?.map((d) => (
+              <g key={d.id}>
+                <path className="chain-satellite-line" d={`M ${d.from.x} ${d.from.y} L ${d.to.x} ${d.to.y}`} />
+                <circle className="chain-satellite-ring" cx={d.to.x} cy={d.to.y} r={d.r} />
+                <circle className="chain-satellite-dot" cx={d.to.x} cy={d.to.y} r={d.r} />
+              </g>
             ))}
 
             {spec.edges.map((e) => (

@@ -161,9 +161,9 @@ export function checkEligibility({
           code: "3c1_holder_cap",
           message:
             `${fund.name} relies on the 3(c)(1) exclusion (100 beneficial owners). ` +
-            `${holderCapacity.currentHolders} of 100 recorded on Alta; ` +
+            `${holderCapacity.currentHolders} of 100 recorded on AltsFlow; ` +
             `${holderCapacity.remaining} remaining. Holders who subscribed outside ` +
-            `Alta are not counted — confirm the total with the fund sponsor.`,
+            `AltsFlow are not counted — confirm the total with the fund sponsor.`,
         });
       }
     } else {
@@ -171,7 +171,7 @@ export function checkEligibility({
         code: "3c1_holder_cap",
         message:
           `${fund.name} relies on the 3(c)(1) exclusion, which is capped at 100 beneficial ` +
-          `owners. Alta cannot verify remaining capacity — confirm with the fund sponsor.`,
+          `owners. AltsFlow cannot verify remaining capacity — confirm with the fund sponsor.`,
       });
     }
   }

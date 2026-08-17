@@ -129,7 +129,7 @@ export function RegisterPage() {
       )}
 
       <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
-        On-chain fields are record-keeping. Alta records where an interest is represented and
+        On-chain fields are record-keeping. AltsFlow records where an interest is represented and
         answers transfer-compliance questions about it; it does not custody keys, sign
         transactions, or broadcast to any chain.
       </p>

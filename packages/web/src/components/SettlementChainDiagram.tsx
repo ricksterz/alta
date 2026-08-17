@@ -268,7 +268,7 @@ const ROLES: Record<string, { label: string; tag: string; text: string }> = {
   portfolio: {
     label: "Portfolio Investments",
     tag: "many — depends on strategy",
-    text: "Where committed capital actually goes to work, decided by the GP under the fund's stated strategy — and what that is varies enormously: operating companies or startups for a PE or venture fund, physical real estate or infrastructure for a real-assets fund, a diversified book of loans for a credit strategy, digital assets for a crypto-focused one. This is the one part of the chain Alta doesn't track — subscription execution ends once a position is funded; what the fund does with the capital afterward is portfolio management, a different system entirely.",
+    text: "Where committed capital actually goes to work, decided by the GP under the fund's stated strategy — and what that is varies enormously: operating companies or startups for a PE or venture fund, physical real estate or infrastructure for a real-assets fund, a diversified book of loans for a credit strategy, digital assets for a crypto-focused one. This is the one part of the chain AltsFlow doesn't track — subscription execution ends once a position is funded; what the fund does with the capital afterward is portfolio management, a different system entirely.",
   },
 };
 

@@ -121,7 +121,7 @@ const ACRONYMS: Acronym[] = [
 const DISCLOSURES: { heading: string; body: string }[] = [
   {
     heading: "Demonstration system",
-    body: "Alta is a development build populated with test data. It does not execute securities transactions, transmit funds, or transmit documents to any counterparty. Nothing here creates a binding obligation.",
+    body: "AltsFlow is a development build populated with test data. It does not execute securities transactions, transmit funds, or transmit documents to any counterparty. Nothing here creates a binding obligation.",
   },
   {
     heading: "Not an offer, and not investment advice",
@@ -133,7 +133,7 @@ const DISCLOSURES: { heading: string; body: string }[] = [
   },
   {
     heading: "Eligibility is self-attested and unverified",
-    body: "Accredited investor and qualified purchaser determinations are recorded as entered by the advisory representative. Alta performs no independent verification of income, net worth, or investments, and performs no KYC or AML screening. Eligibility gates here reduce obvious errors; they are not a substitute for the fund's own subscription review.",
+    body: "Accredited investor and qualified purchaser determinations are recorded as entered by the advisory representative. AltsFlow performs no independent verification of income, net worth, or investments, and performs no KYC or AML screening. Eligibility gates here reduce obvious errors; they are not a substitute for the fund's own subscription review.",
   },
   {
     heading: "Fund data provenance",
@@ -194,7 +194,7 @@ export function SiteFooter() {
         )}
 
         <p className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-5 text-xs text-slate-400 dark:text-slate-500">
-          Alta — development build. Fund reference data derived from public SEC filings. Not for
+          AltsFlow — development build. Fund reference data derived from public SEC filings. Not for
           production use.
         </p>
       </div>

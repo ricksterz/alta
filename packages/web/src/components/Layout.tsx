@@ -35,7 +35,7 @@ export function Layout() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex items-center justify-between gap-3 py-4">
             <Link to="/" className="shrink-0 text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-              Alta
+              AltsFlow
             </Link>
             <div className="flex min-w-0 items-center gap-2 text-sm text-slate-600 dark:text-slate-400 sm:gap-4">
               <ThemeToggle />

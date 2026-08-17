@@ -42,7 +42,7 @@ export function LpViewPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-800">
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="mx-auto max-w-4xl px-6 py-4">
-          <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Alta</span>
+          <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">AltsFlow</span>
         </div>
       </header>
 

@@ -6,7 +6,11 @@ export default {
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        caveat: ['"Caveat"', "cursive"],
+      },
+    },
   },
   plugins: [],
 };

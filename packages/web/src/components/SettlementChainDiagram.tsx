@@ -121,14 +121,14 @@ const SIMPLE: DiagramSpec = {
 };
 
 const EXTENDED: DiagramSpec = {
-  viewBox: "0 0 1930 980",
-  minWidth: 1180,
+  viewBox: "0 0 2150 1080",
+  minWidth: 1350,
   captions: [
     { x: 90, y: 62, text: "via an advisor" },
     { x: 90, y: 252, text: "via a placement agent" },
     { x: 90, y: 542, text: "going direct" },
-    { x: 1820, y: 82, text: "later, on transfer" },
-    { x: 1820, y: 502, text: "annual, after funding" },
+    { x: 2020, y: 82, text: "later, on transfer" },
+    { x: 2020, y: 502, text: "annual, after funding" },
     { x: 1090, y: 494, text: "only before first close" },
   ],
   sectionCaptions: [{ x: 1000, y: 640, text: "capital deployment, once funded — across every LP, not per subscription" }],
@@ -144,10 +144,13 @@ const EXTENDED: DiagramSpec = {
     { role: "escrow", x: 1090, y: 440, w: 160, h: 64, tag: "optional hop", label: "Escrow Agent", labelFontSize: 13.5 },
     { role: "custodian", x: 1310, y: 300, w: 160, h: 64, tag: "party 5", label: "Custodian" },
     { role: "position", x: 1540, y: 300, w: 170, h: 64, rx: 32, tag: "settled", label: "On-Chain Position", labelFontSize: 13, terminal: true },
-    { role: "secondary", x: 1820, y: 150, w: 180, h: 60, tag: "party 6", label: "Secondary Transferee", labelFontSize: 13 },
-    { role: "auditor", x: 1820, y: 450, w: 176, h: 60, tag: "party 7", label: "Auditor / K-1", labelFontSize: 13.5 },
+    { role: "secondary-broker", x: 1720, y: 110, w: 170, h: 60, tag: "optional hop", label: "Secondary Broker", labelFontSize: 13 },
+    { role: "secondary", x: 2020, y: 150, w: 180, h: 60, tag: "party 6", label: "Secondary Transferee", labelFontSize: 13 },
+    { role: "auditor", x: 2020, y: 450, w: 176, h: 60, tag: "party 7", label: "Auditor / K-1", labelFontSize: 13.5 },
     { role: "master-fund", x: 820, y: 820, w: 170, h: 60, tag: "optional hop", label: "Master Fund", labelFontSize: 13.5 },
     { role: "portfolio", x: 1180, y: 820, w: 190, h: 64, rx: 32, tag: "destination", label: "Portfolio Investments", labelFontSize: 12.5, terminal: true },
+    { role: "valuation", x: 1600, y: 950, w: 170, h: 60, tag: "periodic", label: "Valuation / Appraisal", labelFontSize: 12 },
+    { role: "fund-accounting", x: 1890, y: 950, w: 190, h: 60, tag: "ongoing", label: "Fund Accounting", labelFontSize: 13 },
   ],
   edges: [
     { id: "edgeAdvisor", kind: "lane-a", d: "M 168 110 C 320 110, 460 200, 526 300" },
@@ -160,11 +163,14 @@ const EXTENDED: DiagramSpec = {
     { id: "edgeAdminToEscrow", kind: "gate", d: "M 860 332 C 900 400, 960 440, 1010 440" },
     { id: "edgeEscrowToCustodian", kind: "gate", d: "M 1170 440 C 1220 440, 1280 400, 1310 332" },
     { id: "edgeTrunk4", kind: "trunk", d: "M 1390 300 L 1455 300" },
-    { id: "edgeSecondary", kind: "gate", d: "M 1625 300 C 1700 300, 1700 150, 1730 150" },
-    { id: "edgeAudit", kind: "gate", d: "M 1625 300 C 1700 300, 1700 450, 1732 450" },
+    { id: "edgeSecondary", kind: "gate", d: "M 1625 280 C 1670 200, 1700 150, 1720 140" },
+    { id: "edgeSecondaryBrokerToTransferee", kind: "gate", d: "M 1805 110 C 1860 115, 1900 135, 1930 150" },
+    { id: "edgeAudit", kind: "gate", d: "M 1625 300 C 1750 300, 1750 450, 1932 450" },
     { id: "edgeDeployDirect", kind: "trunk", d: "M 610 332 C 700 550, 950 700, 1085 800" },
     { id: "edgeDeployViaMaster", kind: "gate", d: "M 610 332 C 650 550, 780 700, 820 790" },
     { id: "edgeMasterToPortfolio", kind: "gate", d: "M 905 820 C 970 820, 1030 830, 1085 840" },
+    { id: "edgePortfolioToValuation", kind: "gate", d: "M 1275 845 C 1400 880, 1500 920, 1515 940" },
+    { id: "edgeValuationToAccounting", kind: "trunk", d: "M 1685 950 L 1795 950" },
   ],
   particleLanes: [
     { edgeId: "edgeAdvisor", cls: "lane-a", count: 3, duration: 3.2, radius: 3.6, phase: 0 },
@@ -177,11 +183,14 @@ const EXTENDED: DiagramSpec = {
     { edgeId: "edgeEscrowToCustodian", cls: "gate", count: 1, duration: 2.2, radius: 2.6, phase: 0.6 },
     { edgeId: "edgeTrunk4", cls: "trunk", count: 2, duration: 0.9, radius: 3.6, phase: 0 },
     { edgeId: "edgeGate", cls: "gate", count: 1, duration: 4.5, radius: 2.6, phase: 0 },
-    { edgeId: "edgeSecondary", cls: "gate", count: 1, duration: 5.5, radius: 2.8, phase: 0.2 },
+    { edgeId: "edgeSecondary", cls: "gate", count: 1, duration: 4, radius: 2.8, phase: 0.2 },
+    { edgeId: "edgeSecondaryBrokerToTransferee", cls: "gate", count: 1, duration: 2.5, radius: 2.8, phase: 0.6 },
     { edgeId: "edgeAudit", cls: "gate", count: 1, duration: 6, radius: 2.8, phase: 0.6 },
     { edgeId: "edgeDeployDirect", cls: "capital", count: 3, duration: 2.6, radius: 3.6, phase: 0 },
     { edgeId: "edgeDeployViaMaster", cls: "gate", count: 1, duration: 4, radius: 2.6, phase: 0.1 },
     { edgeId: "edgeMasterToPortfolio", cls: "gate", count: 1, duration: 2, radius: 2.6, phase: 0.5 },
+    { edgeId: "edgePortfolioToValuation", cls: "gate", count: 1, duration: 3.5, radius: 2.6, phase: 0.3 },
+    { edgeId: "edgeValuationToAccounting", cls: "trunk", count: 2, duration: 1.4, radius: 3.2, phase: 0 },
   ],
   decorations: [
     { id: "sat1", from: { x: 1275, y: 800 }, to: { x: 1400, y: 750 }, r: 9 },
@@ -253,6 +262,11 @@ const ROLES: Record<string, { label: string; tag: string; text: string }> = {
     tag: "settled",
     text: "A position opens the moment a subscription funds, and its holding can be tokenized — the security's ownership record moves from a signature trail to an on-chain register. Not the end of the chain: a position can later transfer, and it always gets audited.",
   },
+  "secondary-broker": {
+    label: "Secondary Broker",
+    tag: "optional — most sizeable trades use one",
+    text: "A specialist intermediary who sources the buyer, runs price discovery, and manages the trade for a secondary sale — the secondaries-market equivalent of a placement agent, working the other side of the transaction. A small, direct sale between two parties who already know each other can skip straight to the transferee; most sizeable secondary transactions go through a broker instead.",
+  },
   secondary: {
     label: "Secondary Transferee",
     tag: "party 6 — later, on transfer",
@@ -272,6 +286,16 @@ const ROLES: Record<string, { label: string; tag: string; text: string }> = {
     label: "Portfolio Investments",
     tag: "many — depends on strategy",
     text: "Where committed capital actually goes to work, decided by the GP under the fund's stated strategy — and what that is varies enormously: operating companies or startups for a PE or venture fund, physical real estate or infrastructure for a real-assets fund, a diversified book of loans for a credit strategy, digital assets for a crypto-focused one. This is the one part of the chain AltsFlow doesn't track — subscription execution ends once a position is funded; what the fund does with the capital afterward is portfolio management, a different system entirely.",
+  },
+  valuation: {
+    label: "Valuation / Appraisal",
+    tag: "periodic — usually quarterly",
+    text: "Prices the fund's underlying investments — the GP's own mark, an independent third-party appraiser, or both, depending on the asset and what the fund's own governing documents require. Independent valuation matters most exactly where conflicts of interest are sharpest: a GP-led continuation fund, or any deal where the GP sits on both sides of the price. This is the input everything downstream — NAV, capital account statements, what a position is actually reported as being worth — is built on.",
+  },
+  "fund-accounting": {
+    label: "Fund Accounting",
+    tag: "ongoing",
+    text: "Turns valuations into the fund's actual books: NAV calculation, capital account statements, processing capital calls and distributions. In practice this is usually the fund administrator's own job, not a separate party — it's broken out here because it's a distinct, continuous function, unlike the one-time subscription review 'Fund Administrator' represents elsewhere on this diagram. It's also what the annual audit is actually auditing.",
   },
 };
 

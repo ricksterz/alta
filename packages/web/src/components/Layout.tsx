@@ -2,6 +2,7 @@ import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { SiteFooter } from "./SiteFooter";
 import { ThemeToggle } from "./ThemeToggle";
+import { Logo } from "./Logo";
 
 const ROLE_LABELS: Record<string, string> = {
   advisor_admin: "Admin",
@@ -34,8 +35,8 @@ export function Layout() {
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <div className="flex items-center justify-between gap-3 py-4">
-            <Link to="/" className="shrink-0 text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-              AltsFlow
+            <Link to="/" className="shrink-0">
+              <Logo iconClassName="h-7 w-7" textClassName="text-lg" />
             </Link>
             <div className="flex min-w-0 items-center gap-2 text-sm text-slate-600 dark:text-slate-400 sm:gap-4">
               <ThemeToggle />

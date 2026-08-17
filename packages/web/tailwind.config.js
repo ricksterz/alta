@@ -9,6 +9,7 @@ export default {
     extend: {
       fontFamily: {
         caveat: ['"Caveat"', "cursive"],
+        display: ['"Space Grotesk"', "sans-serif"],
       },
     },
   },

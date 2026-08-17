@@ -5,6 +5,7 @@ import { api, ApiError } from "../lib/api";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { SettlementChainDiagram } from "../components/SettlementChainDiagram";
 import { SiteFooter } from "../components/SiteFooter";
+import { Logo } from "../components/Logo";
 
 // Role selection rather than credentials. AltsFlow is a multi-party product —
 // the same subscription looks different to an advisor, a GP, an administrator,
@@ -121,10 +122,8 @@ export function LoginPage() {
       <div className="w-full max-w-2xl">
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-              AltsFlow
-            </h1>
-            <p className="font-caveat mt-1 text-2xl leading-none text-indigo-500 dark:text-indigo-300">
+            <Logo iconClassName="h-9 w-9" textClassName="text-2xl" />
+            <p className="font-caveat mt-2 text-2xl leading-none text-indigo-500 dark:text-indigo-300">
               Keep calm and let the alts flow.
             </p>
           </div>

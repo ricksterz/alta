@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { api, ApiError } from "../lib/api";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { SettlementChainDiagram } from "../components/SettlementChainDiagram";
+import { SiteFooter } from "../components/SiteFooter";
 
 // Role selection rather than credentials. Alta is a multi-party product —
 // the same subscription looks different to an advisor, a GP, an administrator,
@@ -119,6 +120,10 @@ export function LoginPage() {
           </p>
         </div>
         <SettlementChainDiagram />
+      </div>
+
+      <div className="w-full">
+        <SiteFooter />
       </div>
     </div>
   );

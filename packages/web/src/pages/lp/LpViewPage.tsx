@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, ApiError } from "../../lib/api";
+import { SiteFooter } from "../../components/SiteFooter";
 import type { LpView } from "../../lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -133,6 +134,7 @@ export function LpViewPage() {
           </>
         )}
       </main>
+      <SiteFooter />
     </div>
   );
 }

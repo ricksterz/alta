@@ -2,8 +2,10 @@ import { useId } from "react";
 
 // The mark: three lanes of different weight converging into one point,
 // the same "many parties, one settled position" shape the chain-of-custody
-// diagram draws in full. useId keeps the gradient id collision-free if the
-// logo is ever mounted more than once on a page (nav + hero, say).
+// diagram draws in full. The terminal segment picks up a cyan accent so the
+// landing point reads as a distinct destination, not just a stroke end.
+// useId keeps the gradient id collision-free if the logo is ever mounted
+// more than once on a page (nav + hero, say).
 export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
   const gradientId = useId();
   return (
@@ -15,10 +17,11 @@ export function LogoMark({ className = "h-8 w-8" }: { className?: string }) {
         </linearGradient>
       </defs>
       <rect width="40" height="40" rx="11" fill={`url(#${gradientId})`} />
-      <path d="M8 13C15 13 19 18 30 20" stroke="white" strokeOpacity="0.5" strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M8 20H30" stroke="white" strokeOpacity="0.95" strokeWidth="2.4" strokeLinecap="round" />
-      <path d="M8 27C15 27 19 22 30 20" stroke="white" strokeOpacity="0.5" strokeWidth="2.4" strokeLinecap="round" />
-      <circle cx="30.5" cy="20" r="2.6" fill="white" />
+      <path d="M7 13C14 13 18 18 27 20" stroke="white" strokeOpacity="0.55" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M7 20H27" stroke="white" strokeOpacity="0.95" strokeWidth="2.8" strokeLinecap="round" />
+      <path d="M7 27C14 27 18 22 27 20" stroke="white" strokeOpacity="0.55" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M27 20H32" stroke="#22D3EE" strokeWidth="2.8" strokeLinecap="round" />
+      <circle cx="33" cy="20" r="2.8" fill="#22D3EE" />
     </svg>
   );
 }

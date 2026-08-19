@@ -162,6 +162,11 @@ export const DEMO_PERSONAS: DemoPersona[] = [
 const DEMO_EMAILS = new Set(DEMO_PERSONAS.map((p) => p.email));
 
 authRouter.get("/demo-personas", (_req, res) => {
+  // DEMO_PERSONAS is a hardcoded array — it only ever changes via a redeploy,
+  // which ships a new JS bundle anyway. Safe to let the browser skip the
+  // round trip entirely for repeat visits (e.g. "Switch role" bouncing back
+  // through /login) within the cache window.
+  res.set("Cache-Control", "public, max-age=300");
   res.json(DEMO_PERSONAS);
 });
 

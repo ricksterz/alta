@@ -8,12 +8,16 @@ services:
     # at runtime — cookie `secure` flag). Without it, typescript/@types/node
     # never install and the build fails before it can even run tsc.
     buildCommand: npm install --include=dev && npx prisma generate --schema packages/server/prisma/schema.prisma && npm run build --workspace packages/server
-    startCommand: npx prisma migrate deploy --schema packages/server/prisma/schema.prisma && node packages/server/dist/index.js
+    startCommand: npx prisma migrate deploy --schema packages/server/prisma/schema.prisma && npm run prisma:seed-if-empty --workspace packages/server && node packages/server/dist/index.js
     envVars:
       - key: NODE_ENV
         value: production
+      # Wired from the database below rather than pasted in by hand, so a
+      # replacement database is picked up without anyone copying a secret.
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: altsflow-db
+          property: connectionString
       - key: SESSION_TTL_HOURS
         value: "24"
       - key: TIN_ENCRYPTION_KEY
@@ -22,3 +26,12 @@ services:
         sync: false
       - key: WEB_ORIGIN
         sync: false
+
+# Free-tier Render Postgres expires 30 days after creation. When it does,
+# delete it in the dashboard and re-sync this Blueprint: a new one is created,
+# migrations run, and seed-if-empty repopulates the demo data on boot.
+databases:
+  - name: altsflow-db
+    plan: free
+    databaseName: altsflow
+    user: altsflow

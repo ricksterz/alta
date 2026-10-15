@@ -11,6 +11,7 @@
     "prisma:format": "prisma format",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed-if-empty": "tsx prisma/seedIfEmpty.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

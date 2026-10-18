@@ -94,15 +94,29 @@ export function LoginPage() {
   const { loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const [personas, setPersonas] = useState<DemoPersona[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    setSlow(false);
+    // The API is on a free host that sleeps when idle, and the first request
+    // after a nap can take most of a minute — a bare "Loading…" reads as broken.
+    const slowTimer = setTimeout(() => setSlow(true), 3000);
     api
       .get<DemoPersona[]>("/auth/demo-personas")
-      .then(setPersonas)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load roles"));
-  }, []);
+      .then((p) => !cancelled && setPersonas(p))
+      .catch(() => !cancelled && setLoadFailed(true))
+      .finally(() => clearTimeout(slowTimer));
+    return () => {
+      cancelled = true;
+      clearTimeout(slowTimer);
+    };
+  }, [attempt]);
 
   async function enterAs(email: string) {
     setError(null);
@@ -143,8 +157,31 @@ export function LoginPage() {
           </p>
         )}
 
-        {!personas && !error && (
-          <p className="mt-4 text-sm text-slate-400 dark:text-slate-500">Loading roles…</p>
+        {!personas && !loadFailed && (
+          <div className="mt-4 flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-500 dark:border-slate-700 dark:border-t-indigo-400"
+            />
+            <span role="status">
+              {slow
+                ? "Waking up the server. It sleeps when idle on the free plan, so this can take up to a minute."
+                : "Loading roles…"}
+            </span>
+          </div>
+        )}
+
+        {loadFailed && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            <span>Couldn't reach the server. It may still be waking up.</span>
+            <button
+              type="button"
+              onClick={() => setAttempt((a) => a + 1)}
+              className="rounded border border-amber-300 px-3 py-1 font-medium hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900"
+            >
+              Try again
+            </button>
+          </div>
         )}
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
